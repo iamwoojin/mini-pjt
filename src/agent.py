@@ -14,7 +14,7 @@ from typing import Literal
 from langchain_aws import ChatBedrockConverse
 from pydantic import BaseModel, Field
 
-from . import config, retriever, tools
+from . import config, data, retriever, tools
 
 Role = Literal["buyer", "employee", "supplier"]
 VendorVerdict = Literal["적합", "주의", "부적합", "확인 불가"]
@@ -288,85 +288,92 @@ def _fmt(n: float | None) -> str:
     return "-" if n is None else f"{n:,.0f}원"
 
 
-def verify_quote(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) -> tuple[str, str | None]:
-    """견적 1건 이중 검증 → (답변 블록, 조치)"""
-    supplier = tools.find_supplier(q.supplier_name, q.b_no) or {}
+# ---------- 하위 에이전트 작업 (Supervisor가 견적별로 배분) ----------
+
+def vendor_check(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) -> dict:
+    """업체 검증 에이전트: 국세청 상태 · 제출 서류 · 위험 보도 → 업체 판정"""
+    supplier = data.find_supplier(q.supplier_name, q.b_no) or {}
     b_no = q.b_no or supplier.get("b_no", "")
     name = supplier.get("name") or q.supplier_name or "공급사 미상"
 
-    # ① 업체 검증 — 사업자번호가 없으면 '미등록'과 구분해 '확인 불가'로 둔다 (2차 개선, G4)
+    # 사업자번호가 없으면 '미등록'과 구분해 '확인 불가'로 둔다 (2차 개선, G4)
     if not b_no:
         trace.add("vendor_check_skipped", {"supplier_name": q.supplier_name}, "사업자번호·등록 공급사 정보 없음")
-        v, v_reasons = "확인 불가", ["사업자번호와 등록된 공급사 정보가 없어 업체를 확인할 수 없음 (사업자번호를 알려 주시면 국세청 상태를 조회합니다)"]
-    else:
-        nts = trace.add("check_business_status", b_no, tools.check_business_status(b_no))
-        docs = trace.add("get_supplier_docs", supplier.get("id"), tools.get_supplier_docs(supplier.get("id", "")))
-        articles = trace.add("search_news", name, tools.search_news(name))
-        news = trace.add("classify_news", name, classify_news({**docs, "name": name}, articles)) if articles else []
-        v, v_reasons = vendor_verdict(nts, docs, news)
-        trace.add("vendor_verdict", {"today": TODAY_STR, "b_stt": nts.get("b_stt"), "tax_type": nts.get("tax_type"),
-                                     "founded": docs.get("founded"), "employees": docs.get("employees"),
-                                     "docs_complete": docs.get("docs_complete"),
-                                     "rule": "휴업·폐업·미등록=부적합 / 위험 보도·설립 1년 미만·인원 3명 미만·서류 누락=주의 / 그 외 적합"},
-                  {"verdict": v, "reasons": v_reasons})
-        reason_text = " ".join(v_reasons)
-        keys = ["부적합"] if v == "부적합" else []
-        keys += [k for k, word in [("설립", "설립 1년 미만"), ("인원", "3명 미만"), ("서류", "서류 누락"),
-                                   ("위험 보도", "위험 보도("), ("동명", "동명 기업")] if word in reason_text]
-        if v == "주의":
-            keys.append("주의")
-        _cite(trace, contexts, *keys)
+        return {"name": name, "verdict": "확인 불가",
+                "reasons": ["사업자번호와 등록된 공급사 정보가 없어 업체를 확인할 수 없음 (사업자번호를 알려 주시면 국세청 상태를 조회합니다)"]}
 
-    # ② 가격 검증
-    price_lines = []
-    if q.detail_name and q.quoted_price:
-        found = trace.add("search_procurement_prices", {"detail_name": q.detail_name, "spec": q.spec},
-                          tools.search_procurement_prices(q.detail_name, q.spec))
-        if not found["matched_spec"] and q.item_text:
-            # 재검색: 해석된 규격으로 못 찾으면 질문 원문의 품목 표현(질문에 있는 토큰만)으로 다시 찾는다
-            retry_spec = ground_spec(q.item_text, req.question)
-            found = trace.add("search_procurement_prices_retry", {"detail_name": q.detail_name, "spec": retry_spec},
-                              tools.search_procurement_prices(q.detail_name, retry_spec))
-        calc = trace.add("normalize_price",
-                         {"quoted_price": q.quoted_price, "price_unit": q.price_unit, "units_per_benchmark": q.units_per_benchmark,
-                          "vat_included": q.vat_included, "matched_spec": found["matched_spec"],
-                          "method": "VAT 포함 환산(별도면 ×1.1) · 포장 단위 환산 후, 같은 규격 조달 단가의 IQR 이상값 제거 중앙값을 기준가로 비교"},
-                         tools.normalize_price(q.quoted_price, q.units_per_benchmark, q.vat_included, found["rows"]))
-        p = price_verdict(calc["ratio"], calc["samples"])
-        trace.add("price_verdict", {"ratio": calc["ratio"], "samples": calc["samples"],
-                                    "rule": "105% 미만 적정 / 105~120% 검토 필요 / 120% 이상 과다 / 표본 3건 미만 판단 불가"}, p)
-        if calc["benchmark"]:
-            _cite(trace, contexts, "가격 판정")
-        if q.units_per_benchmark and q.units_per_benchmark != 1:
-            price_lines.append(f"{q.price_unit}당 {_fmt(q.quoted_price)} × {q.units_per_benchmark:g}{q.price_unit} = {found['unit'] or '기준 단위'}당 {_fmt(calc['package_price'])}로 환산")
-            _cite(trace, contexts, "단위")
-        vat_note = " (견적서에 VAT 표시가 없어 VAT 별도로 가정)" if calc["vat_assumed"] else (" (VAT 별도 → 10% 가산)" if q.vat_included is False else "")
-        if calc["vat_assumed"]:
-            _cite(trace, contexts, "VAT 가정")
-        elif q.vat_included is False:
-            _cite(trace, contexts, "VAT 별도")
-        if calc["benchmark"]:
-            price_lines.append(f"견적 VAT 포함 {_fmt(calc['quote_vat'])}{vat_note} / 기준가 {_fmt(calc['benchmark'])} "
-                               f"(조달청 쇼핑몰 '{found['matched_spec']}' {calc['samples']}건·{calc['vendors']}개 업체 중앙값) = {calc['ratio']:.0%}")
-        else:
-            price_lines.append(f"같은 규격의 조달 표본이 {calc['samples']}건이라 기준가를 정할 수 없음{vat_note}")
-    else:
-        p = "판단 불가"
-        price_lines.append("품목 규격이나 견적가를 확인할 수 없어 기준가와 비교하지 못함")
+    nts = trace.add("check_business_status", b_no, tools.check_business_status(b_no))
+    docs = trace.add("get_supplier_docs", supplier.get("id"), data.get_supplier_docs(supplier.get("id", "")))
+    articles = trace.add("search_news", name, tools.search_news(name))
+    news = trace.add("classify_news", name, classify_news({**docs, "name": name}, articles)) if articles else []
+    v, v_reasons = vendor_verdict(nts, docs, news)
+    trace.add("vendor_verdict", {"today": TODAY_STR, "b_stt": nts.get("b_stt"), "tax_type": nts.get("tax_type"),
+                                 "founded": docs.get("founded"), "employees": docs.get("employees"),
+                                 "docs_complete": docs.get("docs_complete"),
+                                 "rule": "휴업·폐업·미등록=부적합 / 위험 보도·설립 1년 미만·인원 3명 미만·서류 누락=주의 / 그 외 적합"},
+              {"verdict": v, "reasons": v_reasons})
+    reason_text = " ".join(v_reasons)
+    keys = ["부적합"] if v == "부적합" else []
+    keys += [k for k, word in [("설립", "설립 1년 미만"), ("인원", "3명 미만"), ("서류", "서류 누락"),
+                               ("위험 보도", "위험 보도("), ("동명", "동명 기업")] if word in reason_text]
+    if v == "주의":
+        keys.append("주의")
+    _cite(trace, contexts, *keys)
+    return {"name": name, "verdict": v, "reasons": v_reasons}
 
+
+def price_check(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) -> dict:
+    """가격 검증 에이전트: 조달 기준가 검색(실패 시 재검색) · VAT·단위 정규화 → 가격 판정"""
+    if not (q.detail_name and q.quoted_price):
+        return {"verdict": "판단 불가", "lines": ["품목 규격이나 견적가를 확인할 수 없어 기준가와 비교하지 못함"]}
+    lines = []
+    found = trace.add("search_procurement_prices", {"detail_name": q.detail_name, "spec": q.spec},
+                      tools.search_procurement_prices(q.detail_name, q.spec))
+    if not found["matched_spec"] and q.item_text:
+        # 재검색: 해석된 규격으로 못 찾으면 질문 원문의 품목 표현(질문에 있는 토큰만)으로 다시 찾는다
+        retry_spec = ground_spec(q.item_text, req.question)
+        found = trace.add("search_procurement_prices_retry", {"detail_name": q.detail_name, "spec": retry_spec},
+                          tools.search_procurement_prices(q.detail_name, retry_spec))
+    calc = trace.add("normalize_price",
+                     {"quoted_price": q.quoted_price, "price_unit": q.price_unit, "units_per_benchmark": q.units_per_benchmark,
+                      "vat_included": q.vat_included, "matched_spec": found["matched_spec"],
+                      "method": "VAT 포함 환산(별도면 ×1.1) · 포장 단위 환산 후, 같은 규격 조달 단가의 IQR 이상값 제거 중앙값을 기준가로 비교"},
+                     tools.normalize_price(q.quoted_price, q.units_per_benchmark, q.vat_included, found["rows"]))
+    p = price_verdict(calc["ratio"], calc["samples"])
+    trace.add("price_verdict", {"ratio": calc["ratio"], "samples": calc["samples"],
+                                "rule": "105% 미만 적정 / 105~120% 검토 필요 / 120% 이상 과다 / 표본 3건 미만 판단 불가"}, p)
+    if calc["benchmark"]:
+        _cite(trace, contexts, "가격 판정")
+    if q.units_per_benchmark and q.units_per_benchmark != 1:
+        lines.append(f"{q.price_unit}당 {_fmt(q.quoted_price)} × {q.units_per_benchmark:g}{q.price_unit} = {found['unit'] or '기준 단위'}당 {_fmt(calc['package_price'])}로 환산")
+        _cite(trace, contexts, "단위")
+    vat_note = " (견적서에 VAT 표시가 없어 VAT 별도로 가정)" if calc["vat_assumed"] else (" (VAT 별도 → 10% 가산)" if q.vat_included is False else "")
+    if calc["vat_assumed"]:
+        _cite(trace, contexts, "VAT 가정")
+    elif q.vat_included is False:
+        _cite(trace, contexts, "VAT 별도")
+    if calc["benchmark"]:
+        lines.append(f"견적 VAT 포함 {_fmt(calc['quote_vat'])}{vat_note} / 기준가 {_fmt(calc['benchmark'])} "
+                     f"(조달청 쇼핑몰 '{found['matched_spec']}' {calc['samples']}건·{calc['vendors']}개 업체 중앙값) = {calc['ratio']:.0%}")
+    else:
+        lines.append(f"같은 규격의 조달 표본이 {calc['samples']}건이라 기준가를 정할 수 없음{vat_note}")
+    return {"verdict": p, "lines": lines}
+
+
+def policy_review(q: QuoteItem, req: QueryRequest, vendor: dict, price: dict, trace: Trace, contexts: dict) -> tuple[str, str | None]:
+    """규정 검토 에이전트: 업체 × 가격 → 권고 · 조치 · 근거 조항 → 답변 블록"""
+    v, p = vendor["verdict"], price["verdict"]
     rec, action, rec_reason = recommend(v, p)
     trace.add("recommend", {"vendor": v, "price": p,
                             "rule": "업체 부적합→보류(등록 보류) / 가격 과다→보류(재견적) / 적합×적정→진행 / 그 외 조건부"},
               {"recommendation": rec, "action": action, "reason": rec_reason})
-
-    # 규정 인용 (판정 → 조항)
     _cite(trace, contexts, *[k for k in (p,) if k in ("과다", "검토 필요", "판단 불가")])
     if action:
         _cite(trace, contexts, "조치 권한")
 
-    lines = [f"[{name}] {q.item_text}",
-             f"업체 판정: {v}", *[f"  - {r}" for r in v_reasons],
-             f"가격 판정: {p}", *[f"  - {r}" for r in price_lines],
+    lines = [f"[{vendor['name']}] {q.item_text}",
+             f"업체 판정: {v}", *[f"  - {r}" for r in vendor["reasons"]],
+             f"가격 판정: {p}", *[f"  - {r}" for r in price["lines"]],
              f"권고: {rec} ({rec_reason})"]
     if action:
         label = ACTION_LABEL[action]
@@ -375,6 +382,11 @@ def verify_quote(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) 
         else:
             lines.append(f"다음 조치: {label}이(가) 필요합니다. 구매 담당자 승인 필요 (임직원은 직접 실행할 수 없습니다)")
     return "\n".join(lines), action
+
+
+def verify_quote(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) -> tuple[str, str | None]:
+    """견적 1건 이중 검증 (하위 에이전트를 순서대로 실행하는 단순 버전, 테스트·디버깅용)"""
+    return policy_review(q, req, vendor_check(q, req, trace, contexts), price_check(q, req, trace, contexts), trace, contexts)
 
 
 def run(req: QueryRequest) -> dict:

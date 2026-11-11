@@ -1,67 +1,74 @@
-"""LangGraph 흐름 (T15) + HITL interrupt (T16).
+"""LangGraph 흐름: 규칙 라우팅 + Supervisor(하위 에이전트 병렬 배분) + HITL interrupt.
 
-    input_guard → parse ─┬─ policy        → END
-                         ├─ blocked (G1)   → END
-                         ├─ out_of_scope   → END
-                         ├─ unrelated      → END
-                         └─ verify → approval ─(구매 담당자 + 조치 있음)→ interrupt → 승인/거부 → END
+    input_guard → parse ─┬─ policy        → END        (규정 질의 RAG)
+                         ├─ blocked (G1)   → END        (공급사 권한 차단)
+                         ├─ out_of_scope   → END        (용역·공사·맞춤 제작·중고·렌탈)
+                         ├─ unrelated      → END        (서비스 안내)
+                         └─ supervisor ──Send──┬─ vendor_agent × 견적 수   (업체 검증)
+                                               └─ price_agent  × 견적 수   (가격 검증)
+                                                        ↓ (모두 끝나면)
+                                                  policy_agent              (규정 검토 · 권고 · 답변)
+                                                        ↓
+                                                  approval ─(구매 담당자 + 조치)→ interrupt → 승인/거부 → END
 
-- 판정 함수 · 도구 · 프롬프트는 src/agent.py를 그대로 쓴다. 이 파일은 흐름만 담당한다.
-- 승인 대기는 interrupt()로 그래프를 멈추고 체크포인터에 thread_id별로 상태를 저장한다.
-  같은 thread_id로 approval을 보내면 Command(resume=...)로 재개한다.
-- 권한 확인(승인은 구매 담당자만)은 재개 전에 코드로 먼저 한다 (결정적 게이트).
+- Supervisor는 LLM이 아닌 코드로 작업을 배분한다. 이중 검증 원칙상 모든 견적은 업체·가격 검증을 반드시 거치고,
+  두 검증은 서로 독립이라 견적별로 병렬 실행한다(LangGraph Send).
+- 판정 함수 · 도구 · 프롬프트는 src/agent.py, 사내 데이터 접근은 src/data.py. 이 파일은 흐름만 담당한다.
+- 승인 대기는 interrupt()로 그래프를 멈추고 체크포인터에 thread_id별 상태를 저장한다.
+  같은 thread_id로 approval을 보내면 Command(resume=...)로 재개하며, 재개 전에 권한(구매 담당자만)을 코드로 확인한다.
 """
 from __future__ import annotations
 
+import operator
 import re
 import time
 import uuid
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Command, interrupt
+from langgraph.types import Command, Send, interrupt
 
-from . import agent, retriever, tools
-from .agent import ACTION_LABEL, INJECTION_PATTERNS, ParsedQuery, QueryRequest, Trace
+from . import agent, data, retriever
+from .agent import ACTION_LABEL, INJECTION_PATTERNS, ParsedQuery, QueryRequest, QuoteItem, Trace
 
 SERVICE_GUIDE = ("이 서비스는 공급사 견적의 업체 검증과 견적 검증(가격 적정성)을 돕습니다. "
                  "예: '알파상사(999-99-00001) 견적: 복사용지 A4 80g 2500매 1상자 23,000원(VAT 별도). 진행해도 될까?'")
 
 
+def _merge(a: dict | None, b: dict | None) -> dict:
+    return {**(a or {}), **(b or {})}
+
+
 class State(TypedDict, total=False):
     req: dict
-    trace: list[dict]
-    contexts: dict[str, dict]
+    trace: Annotated[list[dict], operator.add]          # 노드는 새로 추가한 단계만 반환한다 (병렬 노드 결과를 이어 붙임)
+    contexts: Annotated[dict[str, dict], _merge]        # 인용 조항 (doc_id → 조항)
     injected: bool
     parsed: dict
     route: str
+    vendor_results: Annotated[list[dict], operator.add]
+    price_results: Annotated[list[dict], operator.add]
     answer: str
     actions: list[dict]
     status: str
 
 
-def _trace(state: State) -> Trace:
-    t = Trace()
-    t.steps = list(state.get("trace", []))
-    return t
-
-
-def _req(state: State) -> QueryRequest:
+def _req(state: dict) -> QueryRequest:
     return QueryRequest(**state["req"])
 
 
-# ---------- 노드 ----------
+# ---------- 라우팅 노드 ----------
 
 def input_guard(state: State) -> dict:
-    t, req = _trace(state), _req(state)
+    t, req = Trace(), _req(state)
     injected = any(re.search(p, req.question, flags=re.I) for p in INJECTION_PATTERNS)
     t.add("input_guard", {"role": req.role}, {"injection_detected": injected})
-    return {"trace": t.steps, "injected": injected, "contexts": {}}
+    return {"trace": t.steps, "injected": injected}
 
 
 def parse(state: State) -> dict:
-    t, req = _trace(state), _req(state)
+    t, req = Trace(), _req(state)
     if req.mode == "policy" and req.role != "supplier":
         t.add("route", {"mode": "policy"}, "policy_question")
         return {"trace": t.steps, "route": "policy"}
@@ -77,19 +84,19 @@ def parse(state: State) -> dict:
 
     # 공급사 권한 게이트 (G1)는 의도와 관계없이 먼저 본다
     if req.role == "supplier":
-        own = tools.get_supplier_docs(req.supplier_id or "").get("name")
+        own = data.get_supplier_docs(req.supplier_id or "").get("name")
         others = [q for q in parsed.quotes if q.supplier_name and own and own not in q.supplier_name]
         if parsed.intent == "other_supplier_info" or others or re.search(r"몇\s*등|순위|얼마에\s*냈", req.question):
             return {"trace": t.steps, "parsed": parsed.model_dump(), "route": "blocked"}
 
     route = {"out_of_scope_item": "out_of_scope", "unrelated": "unrelated", "policy_question": "policy"}.get(parsed.intent)
     if route is None:
-        route = "verify" if parsed.quotes else "policy"
+        route = "supervisor" if parsed.quotes else "policy"
     return {"trace": t.steps, "parsed": parsed.model_dump(), "route": route}
 
 
 def policy(state: State) -> dict:
-    t, req, ctx = _trace(state), _req(state), dict(state.get("contexts", {}))
+    t, req, ctx = Trace(), _req(state), {}
     hits = t.add("search_policy", req.question, retriever.search_policy(req.question, k=3))
     ctx.update({h["doc_id"]: h for h in hits})
     joined = "\n".join(f"[{h['doc_id']}] {h['text']}" for h in hits)
@@ -102,7 +109,7 @@ def policy(state: State) -> dict:
 
 
 def blocked(state: State) -> dict:
-    t, req, ctx = _trace(state), _req(state), dict(state.get("contexts", {}))
+    t, req, ctx = Trace(), _req(state), {}
     agent._cite(t, ctx, "공급사 비공개")
     t.add("guard_G1", req.supplier_id, "blocked")
     return {"trace": t.steps, "contexts": ctx,
@@ -110,7 +117,7 @@ def blocked(state: State) -> dict:
 
 
 def out_of_scope(state: State) -> dict:
-    t, ctx = _trace(state), dict(state.get("contexts", {}))
+    t, ctx = Trace(), {}
     kind = state["parsed"].get("out_of_scope_type") or "범위 밖 품목"
     agent._cite(t, ctx, "범위 밖")
     return {"trace": t.steps, "contexts": ctx,
@@ -122,12 +129,52 @@ def unrelated(state: State) -> dict:
     return {"answer": SERVICE_GUIDE}
 
 
-def verify(state: State) -> dict:
-    t, req, ctx = _trace(state), _req(state), dict(state.get("contexts", {}))
-    parsed = ParsedQuery(**state["parsed"])
+# ---------- Supervisor + 하위 에이전트 ----------
+
+def supervisor(state: State) -> dict:
+    """견적별 작업 계획을 세운다. 실제 배분은 dispatch()가 Send로 한다."""
+    t = Trace()
+    quotes = state["parsed"]["quotes"]
+    plan = [{"quote": i, "supplier": q.get("supplier_name"), "item": q.get("item_text"), "agents": ["vendor_agent", "price_agent"]}
+            for i, q in enumerate(quotes)]
+    t.add("supervisor", {"quotes": len(quotes)}, plan)
+    return {"trace": t.steps}
+
+
+def dispatch(state: State) -> list[Send]:
+    payloads = [{"req": state["req"], "idx": i, "quote": q} for i, q in enumerate(state["parsed"]["quotes"])]
+    return [Send("vendor_agent", p) for p in payloads] + [Send("price_agent", p) for p in payloads]
+
+
+def vendor_agent(task: dict) -> dict:
+    t, ctx = Trace(), {}
+    q, req = QuoteItem(**task["quote"]), _req(task)
+    t.add("vendor_agent", {"quote": task["idx"], "supplier": q.supplier_name, "b_no": q.b_no}, "start")
+    result = agent.vendor_check(q, req, t, ctx)
+    t.add("vendor_agent", {"quote": task["idx"]}, {"verdict": result["verdict"]})
+    return {"trace": t.steps, "contexts": ctx, "vendor_results": [{"idx": task["idx"], **result}]}
+
+
+def price_agent(task: dict) -> dict:
+    t, ctx = Trace(), {}
+    q, req = QuoteItem(**task["quote"]), _req(task)
+    t.add("price_agent", {"quote": task["idx"], "item": q.item_text, "quoted_price": q.quoted_price}, "start")
+    result = agent.price_check(q, req, t, ctx)
+    t.add("price_agent", {"quote": task["idx"]}, {"verdict": result["verdict"]})
+    return {"trace": t.steps, "contexts": ctx, "price_results": [{"idx": task["idx"], **result}]}
+
+
+def policy_agent(state: State) -> dict:
+    """규정 검토 에이전트: 견적별 업체·가격 결과를 모아 권고·조치·근거 조항을 정하고 답변을 만든다."""
+    t, req = Trace(), _req(state)
+    ctx = dict(state.get("contexts", {}))
+    t.add("policy_agent", {"quotes": len(state["parsed"]["quotes"])}, "start")
+    vendors = {r["idx"]: r for r in state.get("vendor_results", [])}
+    prices = {r["idx"]: r for r in state.get("price_results", [])}
     blocks, actions = [], []
-    for q in parsed.quotes:
-        block, action = agent.verify_quote(q, req, t, ctx)
+    for i, qd in enumerate(state["parsed"]["quotes"]):
+        q = QuoteItem(**qd)
+        block, action = agent.policy_review(q, req, vendors[i], prices[i], t, ctx)
         blocks.append(block)
         if action:
             actions.append({"type": action, "label": ACTION_LABEL[action], "target": f"{q.supplier_name} / {q.item_text}"})
@@ -135,7 +182,7 @@ def verify(state: State) -> dict:
         agent._cite(t, ctx, "지시문")
         blocks.append("※ 견적서 안의 지시 문구는 검토 대상 데이터로만 보고 판정에 반영하지 않았습니다.")
     if ctx:
-        blocks.append("근거 규정: " + ", ".join(f"[{k}]" for k in ctx))
+        blocks.append("근거 규정: " + ", ".join(f"[{k}]" for k in sorted(ctx)))
     return {"trace": t.steps, "contexts": ctx, "answer": "\n\n".join(blocks), "actions": actions}
 
 
@@ -145,7 +192,7 @@ def approval(state: State) -> dict:
     if not actions or state["req"]["role"] != "buyer":
         return {}
     decision = interrupt({"action": actions[0]})  # 여기서 그래프가 멈추고, 재개되면 승인/거부 값이 들어온다
-    t = _trace(state)
+    t = Trace()
     t.add("approval", decision, actions[0])
     verb = "승인" if decision == "approve" else "거부"
     return {"trace": t.steps, "status": "approved" if decision == "approve" else "rejected",
@@ -157,15 +204,20 @@ def approval(state: State) -> dict:
 def build_graph():
     g = StateGraph(State)
     for name, fn in [("input_guard", input_guard), ("parse", parse), ("policy", policy), ("blocked", blocked),
-                     ("out_of_scope", out_of_scope), ("unrelated", unrelated), ("verify", verify), ("approval", approval)]:
+                     ("out_of_scope", out_of_scope), ("unrelated", unrelated), ("supervisor", supervisor),
+                     ("vendor_agent", vendor_agent), ("price_agent", price_agent), ("policy_agent", policy_agent),
+                     ("approval", approval)]:
         g.add_node(name, fn)
     g.add_edge(START, "input_guard")
     g.add_edge("input_guard", "parse")
     g.add_conditional_edges("parse", lambda s: s["route"],
-                            {r: r for r in ("policy", "blocked", "out_of_scope", "unrelated", "verify")})
+                            {r: r for r in ("policy", "blocked", "out_of_scope", "unrelated", "supervisor")})
     for end_node in ("policy", "blocked", "out_of_scope", "unrelated"):
         g.add_edge(end_node, END)
-    g.add_edge("verify", "approval")
+    g.add_conditional_edges("supervisor", dispatch, ["vendor_agent", "price_agent"])
+    g.add_edge("vendor_agent", "policy_agent")
+    g.add_edge("price_agent", "policy_agent")
+    g.add_edge("policy_agent", "approval")
     g.add_edge("approval", END)
     return g.compile(checkpointer=MemorySaver())
 

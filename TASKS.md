@@ -45,8 +45,8 @@
   - 확인: `run_eval.py --tag round3`가 round2와 같은 통과율 (결과: round3·round4 20/20)
 - [x] T16 HITL을 LangGraph `interrupt` + 체크포인터로 전환
   - 확인: 승인 대기 → 같은 `thread_id`로 approve 시 재개, 임직원 승인은 거부
-- [ ] T17 Supervisor: 업체 검증 / 가격 검증 / 규정 검토 하위 에이전트
-  - 확인: trace에 하위 에이전트별 단계가 남고 round3 통과율 유지
+- [x] T17 Supervisor: 업체 검증 / 가격 검증 / 규정 검토 하위 에이전트
+  - 확인: trace에 하위 에이전트별 단계가 남고 round3 통과율 유지 (결과: round5 20/20)
 - [ ] T18 MCP 서버로 공급사 · 견적 · 제출 서류 제공
   - 확인: MCP 서버를 띄운 상태에서 같은 질문의 결과가 동일
 
