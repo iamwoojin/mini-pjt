@@ -31,3 +31,6 @@ VAT_RATE = 0.10
 NEWS_LOOKBACK_YEARS = 3
 MIN_COMPANY_AGE_YEARS = 1
 MIN_EMPLOYEES = 3
+
+# 입력 가드레일: 질문 최대 길이 (비용·시간 보호, 견적 여러 건도 충분한 길이)
+MAX_QUESTION_CHARS = 2000

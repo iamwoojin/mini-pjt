@@ -29,7 +29,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, Send, interrupt
 
-from . import agent, data, retriever
+from . import agent, config, data, retriever
 from .agent import ACTION_LABEL, INJECTION_PATTERNS, ParsedQuery, QueryRequest, QuoteItem, Trace
 
 SERVICE_GUIDE = ("이 서비스는 공급사 견적의 업체 검증과 견적 검증(가격 적정성)을 돕습니다. "
@@ -250,6 +250,14 @@ def run(req: QueryRequest) -> dict:
         res = _response(values, t0)
         res["status"] = values.get("status")
         return res
+
+    # 입력 길이 가드레일: LLM을 부르기 전에 코드로 거른다
+    if len(req.question) > config.MAX_QUESTION_CHARS:
+        t = Trace()
+        t.add("input_guard", {"role": req.role, "chars": len(req.question)}, {"too_long": True})
+        return _response({"trace": t.steps,
+                          "answer": f"질문이 너무 깁니다 ({len(req.question):,}자). {config.MAX_QUESTION_CHARS:,}자 이내로 줄이거나 "
+                                    "견적을 나눠서 입력해 주세요."}, t0)
 
     thread_id = req.thread_id or uuid.uuid4().hex[:12]
     cfg = {"configurable": {"thread_id": thread_id}}

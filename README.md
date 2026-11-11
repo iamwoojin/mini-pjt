@@ -30,7 +30,7 @@ web/        index.html(테스트 화면)
 ## 실행
 
 ```bash
-pip install -r requirements.txt          # Python 3.12+ 권장
+pip install -r requirements.txt          # 서비스 실행 + 단위 테스트 (Python 3.12+)
 cp .env.example .env                     # AWS 키 입력 (국세청 LIVE 조회 시 DATA_GO_KR_API_KEY)
 uvicorn src.api:app --port 8000          # http://localhost:8000 테스트 화면
 curl -X POST localhost:8000/query -H "Content-Type: application/json" \
@@ -40,14 +40,21 @@ curl -X POST localhost:8000/query -H "Content-Type: application/json" \
 평가와 테스트:
 
 ```bash
+pip install -r requirements-eval.txt                      # RAGAS 평가용 (선택)
 pytest                                                    # 판정 규칙 단위 테스트 (수 초)
 python evaluation/run_eval.py --tag round5                # 테스트 세트 20건 자동 채점
 python evaluation/run_ragas.py --tag ragas_round5         # RAGAS faithfulness · context_recall
 python evaluation/run_judge.py --from ragas_round5 --tag judge_round5   # LLM-as-Judge
 ```
 
-- Python 3.14에서는 ragas 의존성 `scikit-network`가 빌드되지 않는다. 이 경우 `pip install ragas --no-deps` 후 나머지 의존성을 설치한다 (평가 지표에는 scikit-network가 필요 없음).
+- Python 3.14에서는 ragas 의존성 `scikit-network`가 빌드되지 않는다. `requirements-eval.txt` 상단 안내대로 `pip install ragas==0.4.3 --no-deps` 후 나머지를 설치한다 (평가 지표에는 scikit-network가 필요 없음).
 - 승인 대기 응답(`status: pending_approval`)을 받으면 같은 `thread_id`로 `{"approval": "approve"}`를 보내 재개한다. 승인은 `role: buyer`만 가능하다.
+
+## 알려진 한계 (데모)
+
+- **역할은 요청 본문의 `role` 값을 그대로 믿는다.** 로그인이 없는 데모라 누구나 `role: buyer`로 보내면 구매 담당자로 처리된다. 공급사 정보 차단(G1)과 조치 승인(G2)은 이 전제에서 동작하며, 운영에서는 로그인 토큰에서 역할을 정해야 한다.
+- 승인 대기 상태는 메모리에 있어 서버를 재시작하면 사라진다. 승인/거부는 결과만 응답하고 실제 조치는 하지 않는다.
+- 자세한 목록: [SERVICE.md](SERVICE.md) 4장 "알려진 한계와 운영 시 보완"
 
 ## 데이터 안내
 

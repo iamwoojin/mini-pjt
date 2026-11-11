@@ -177,3 +177,11 @@ def test_data_layer_matches_local_tools():
     assert data.find_supplier("베타산업", None)["id"] == tools.find_supplier("베타산업", None)["id"]
     assert data.get_supplier_docs("S06") == tools.get_supplier_docs("S06")
     assert all(q["supplier_id"] == "S01" for q in data.get_quotes("복사용지", "S01"))
+
+
+# ---------- 입력 길이 가드레일 (LLM 호출 전에 차단) ----------
+
+def test_too_long_question_is_rejected_before_llm():
+    res = agent.run(agent.QueryRequest(question="가" * (config.MAX_QUESTION_CHARS + 1)))
+    assert "너무 깁니다" in res["answer"]
+    assert [s["step"] for s in res["trace"]] == ["input_guard", "done"]
