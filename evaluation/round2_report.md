@@ -101,7 +101,25 @@ RAGAS round3 점수가 낮은 이유를 평가 모델의 감점 사유로 분석
 
 결과: faithfulness 0.549 → 0.974, context_recall 0.838 → 1.000.
 
-## 남은 한계 (round4 기준)
+## round5: Supervisor + MCP (구조 개선, 판정 로직 변경 없음)
+
+| 변경 | 내용 | 확인 |
+|---|---|---|
+| Supervisor | 견적마다 업체 검증 · 가격 검증 에이전트를 병렬 배분(LangGraph `Send`), 규정 검토 에이전트가 결과를 모아 권고 · 근거 · 답변 작성. 배분은 LLM이 아닌 코드로 한다 (이중 검증 원칙상 모든 견적이 두 검증을 반드시 거침) | trace에 `supervisor → vendor_agent / price_agent → policy_agent` 기록, 두 공급사 견적(P07)에서 견적별 병렬 실행 |
+| MCP | 공급사 · 견적 · 제출 서류를 사내 데이터 MCP 서버(`src/mcp_server.py`)로 제공. 세션 하나를 열어 두고 재사용(연결 약 3초, 조회 수 ms), 연결 실패 시 직접 호출로 전환 | trace의 `find_supplier` · `get_supplier_docs`에 `via: mcp`, 직접 호출과 같은 결과(단위 테스트) |
+
+| 지표 | round4 | round5 (최종) |
+|---|---|---|
+| 테스트 세트 통과율 | 20/20 | **20/20** |
+| guardrail | 3/3 | **3/3** |
+| 도구 정확도 | 97.7% | 97.7% |
+| 응답 시간 중앙값 | 3.2초 | 2.9초 |
+| RAGAS faithfulness / context_recall | 0.974 / 1.000 | **0.983 / 1.000** |
+| LLM-as-Judge | 4.92 | **4.92** (근거 5.0 · 완결성 4.84) |
+
+구조를 바꿔도 판정 결과와 답변 품질이 유지됨을 확인했다. 결과 파일: `results/round5.json`, `results/ragas_round5.json`, `results/judge_round5.json`.
+
+## 남은 한계 (최종 기준)
 
 - **도구 정확도 97.7%**: P07(두 공급사 비교)에서 `get_quotes`를 호출하지 않는다 (P2).
 - **LLM-as-Judge 감점 2건**: P08 규정 답변이 120% 기준만 말하고 105~120% 구간(가격 협의)은 생략, N01 범위 밖 안내 문장에 조항 번호 표기 없음.

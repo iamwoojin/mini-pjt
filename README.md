@@ -4,21 +4,22 @@
 
 ## 결과 요약
 
-| 지표 | 1차 | 최종 (round4) | 목표 |
+| 지표 | 1차 | 최종 (round5) | 목표 |
 |---|---|---|---|
 | 테스트 세트 통과율 (20건) | 85% | **100%** | 85% 이상 |
 | guardrail | 100% | **100%** | 100% |
-| RAGAS faithfulness / context_recall | - | **0.974 / 1.000** | 0.8 이상 |
+| RAGAS faithfulness / context_recall | - | **0.983 / 1.000** | 0.8 이상 |
 | LLM-as-Judge | - | **4.92 / 5** | 4 이상 |
-| 응답 시간 중앙값 | 2.9초 | 3.2초 | 20초 이내 |
+| 응답 시간 중앙값 | 2.9초 | 2.9초 | 20초 이내 |
 
 자세한 내용: [1차 보고서](evaluation/round1_report.md) · [2차 이후 보고서](evaluation/round2_report.md)
 
 ## 구조
 
 ```
-src/        graph.py(LangGraph 흐름 · 승인 대기 interrupt) · agent.py(판정 규칙 · 프롬프트 · 근거 조항)
-            tools.py(API 도구) · retriever.py(규정 RAG) · api.py(POST /query) · config.py
+src/        graph.py(LangGraph: 라우팅 · Supervisor · 하위 에이전트 병렬 · 승인 대기 interrupt)
+            agent.py(판정 규칙 · 하위 에이전트 작업 · 프롬프트 · 근거 조항) · tools.py(API 도구)
+            data.py · mcp_server.py · mcp_client.py(사내 데이터 MCP) · retriever.py(규정 RAG) · api.py(POST /query)
 data/       suppliers.json(가상 공급사) · docs/(사내 규정 더미) · fixtures/(조달 단가 추출본, 국세청·뉴스 fixture)
 scripts/    extract_procurement.py(조달청 원본 CSV → 테스트 품목 추출)
 evaluation/ test_queries.csv · run_eval.py · run_ragas.py · run_judge.py · ragas_references.json · results/ · 보고서
@@ -40,9 +41,9 @@ curl -X POST localhost:8000/query -H "Content-Type: application/json" \
 
 ```bash
 pytest                                                    # 판정 규칙 단위 테스트 (수 초)
-python evaluation/run_eval.py --tag round4                # 테스트 세트 20건 자동 채점
-python evaluation/run_ragas.py --tag ragas_round4         # RAGAS faithfulness · context_recall
-python evaluation/run_judge.py --from ragas_round4 --tag judge_round4   # LLM-as-Judge
+python evaluation/run_eval.py --tag round5                # 테스트 세트 20건 자동 채점
+python evaluation/run_ragas.py --tag ragas_round5         # RAGAS faithfulness · context_recall
+python evaluation/run_judge.py --from ragas_round5 --tag judge_round5   # LLM-as-Judge
 ```
 
 - Python 3.14에서는 ragas 의존성 `scikit-network`가 빌드되지 않는다. 이 경우 `pip install ragas --no-deps` 후 나머지 의존성을 설치한다 (평가 지표에는 scikit-network가 필요 없음).

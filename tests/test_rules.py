@@ -168,3 +168,12 @@ def test_ground_spec(spec, question, expected):
 def test_box_spec_does_not_match_volume_pack():
     found = tools.search_procurement_prices("프린트및복사용지", "일반 A4 80g 2500매")
     assert "250매×10권" not in found["matched_spec"]
+
+
+# ---------- 사내 데이터 접근 (MCP와 직접 호출이 같은 결과) ----------
+
+def test_data_layer_matches_local_tools():
+    from src import data
+    assert data.find_supplier("베타산업", None)["id"] == tools.find_supplier("베타산업", None)["id"]
+    assert data.get_supplier_docs("S06") == tools.get_supplier_docs("S06")
+    assert all(q["supplier_id"] == "S01" for q in data.get_quotes("복사용지", "S01"))

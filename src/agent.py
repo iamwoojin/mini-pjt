@@ -292,7 +292,8 @@ def _fmt(n: float | None) -> str:
 
 def vendor_check(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) -> dict:
     """업체 검증 에이전트: 국세청 상태 · 제출 서류 · 위험 보도 → 업체 판정"""
-    supplier = data.find_supplier(q.supplier_name, q.b_no) or {}
+    supplier = trace.add("find_supplier", {"name": q.supplier_name, "b_no": q.b_no, "via": data.source()},
+                         data.find_supplier(q.supplier_name, q.b_no)) or {}
     b_no = q.b_no or supplier.get("b_no", "")
     name = supplier.get("name") or q.supplier_name or "공급사 미상"
 
@@ -303,7 +304,8 @@ def vendor_check(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) 
                 "reasons": ["사업자번호와 등록된 공급사 정보가 없어 업체를 확인할 수 없음 (사업자번호를 알려 주시면 국세청 상태를 조회합니다)"]}
 
     nts = trace.add("check_business_status", b_no, tools.check_business_status(b_no))
-    docs = trace.add("get_supplier_docs", supplier.get("id"), data.get_supplier_docs(supplier.get("id", "")))
+    docs = trace.add("get_supplier_docs", {"supplier_id": supplier.get("id"), "via": data.source()},
+                     data.get_supplier_docs(supplier.get("id", "")))
     articles = trace.add("search_news", name, tools.search_news(name))
     news = trace.add("classify_news", name, classify_news({**docs, "name": name}, articles)) if articles else []
     v, v_reasons = vendor_verdict(nts, docs, news)
