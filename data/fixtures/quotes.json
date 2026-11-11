@@ -1,0 +1,9 @@
+{
+  "_note": "사내 견적 접수 내역(가상). 공급사 간 비교와 공급사 권한 가드레일(G1) 테스트에 쓴다.",
+  "quotes": [
+    {"quote_id": "Q-2026-0101", "supplier_id": "S01", "item_id": "I01", "item": "복사용지 일반 A4 80g 2500매", "unit": "상자", "price": 26000, "vat_included": false, "date": "2026-11-03"},
+    {"quote_id": "Q-2026-0102", "supplier_id": "S02", "item_id": "I01", "item": "복사용지 일반 A4 80g 2500매", "unit": "상자", "price": 27000, "vat_included": false, "date": "2026-11-04"},
+    {"quote_id": "Q-2026-0103", "supplier_id": "S01", "item_id": "I08", "item": "사무실칸막이 1200×30×1160mm", "unit": "개", "price": 170000, "vat_included": false, "date": "2026-11-05"},
+    {"quote_id": "Q-2026-0104", "supplier_id": "S02", "item_id": "I08", "item": "사무실칸막이 1200×30×1160mm", "unit": "개", "price": 240000, "vat_included": false, "date": "2026-11-05"}
+  ]
+}

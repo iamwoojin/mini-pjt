@@ -1,0 +1,17 @@
+langchain
+langchain-aws
+langchain-chroma
+langgraph
+langgraph-supervisor
+langgraph-checkpoint-sqlite
+langchain-mcp-adapters
+fastmcp
+chromadb
+boto3
+pydantic
+python-dotenv
+requests
+fastapi
+uvicorn
+ragas
+pytest

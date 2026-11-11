@@ -1,0 +1,13 @@
+{
+  "_note": "모든 공급사명·사업자번호·대표자·소재지는 가상이다. 국세청·뉴스 응답은 data/fixtures에 실제 API 응답과 같은 형식으로 둔다.",
+  "suppliers": [
+    {"id": "S01", "name": "알파상사", "b_no": "9999900001", "region": "서울 금천구", "industry": "사무용품·지류 도소매", "ceo": "김가온", "founded": "2016-03-02", "employees": 18, "docs_complete": true},
+    {"id": "S02", "name": "베타산업", "b_no": "9999900002", "region": "경기 수원시", "industry": "사무용 가구·사무기기 도소매", "ceo": "이도윤", "founded": "2012-07-15", "employees": 42, "docs_complete": true},
+    {"id": "S03", "name": "감마유통", "b_no": "9999900003", "region": "인천 남동구", "industry": "사무용 가구 도소매", "ceo": "박서준", "founded": "2018-01-10", "employees": 7, "docs_complete": true},
+    {"id": "S04", "name": "제타오피스", "b_no": "9999900004", "region": "대전 유성구", "industry": "사무용품 도소매", "ceo": "최하린", "founded": "2015-05-20", "employees": 0, "docs_complete": true},
+    {"id": "S05", "name": "델타테크", "b_no": "9999900005", "region": "미상", "industry": "미상", "ceo": "미상", "founded": null, "employees": null, "docs_complete": false},
+    {"id": "S06", "name": "엡실론솔루션", "b_no": "9999900006", "region": "경기 성남시", "industry": "사무기기 도소매", "ceo": "정예준", "founded": "2026-04-01", "employees": 4, "docs_complete": true},
+    {"id": "S07", "name": "에타MRO", "b_no": "9999900007", "region": "충북 청주시", "industry": "MRO 도소매", "ceo": "한지우", "founded": "2019-09-09", "employees": 11, "docs_complete": false},
+    {"id": "S08", "name": "세타전자", "b_no": "9999900008", "region": "경기 안양시", "industry": "사무용 가구·전자기기 제조", "ceo": "윤시우", "founded": "2010-11-01", "employees": 25, "docs_complete": true}
+  ]
+}

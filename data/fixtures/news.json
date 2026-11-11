@@ -1,0 +1,44 @@
+{
+  "_note": "네이버 뉴스 검색 API 응답(items)과 같은 형식의 가상 기사. 회사·인물·사건은 모두 가상이며 링크는 example.com이다.",
+  "세타전자": [
+    {
+      "title": "<b>세타전자</b>, 공공기관 납품 비리 의혹으로 압수수색",
+      "originallink": "https://news.example.com/2025/06/theta-raid",
+      "link": "https://news.example.com/2025/06/theta-raid",
+      "description": "경기 안양시의 사무용 가구 제조업체 <b>세타전자</b>가 공공기관 납품 과정에서 단가를 부풀렸다는 의혹으로 경찰의 압수수색을 받았다. 회사 측은 의혹을 부인했다.",
+      "pubDate": "Tue, 17 Jun 2025 10:20:00 +0900"
+    },
+    {
+      "title": "<b>세타전자</b>, 친환경 사무용 의자 신제품 출시",
+      "originallink": "https://news.example.com/2024/03/theta-chair",
+      "link": "https://news.example.com/2024/03/theta-chair",
+      "description": "안양 소재 <b>세타전자</b>가 재활용 소재를 적용한 사무용 의자 신제품을 내놓았다.",
+      "pubDate": "Mon, 11 Mar 2024 09:00:00 +0900"
+    }
+  ],
+  "베타산업": [
+    {
+      "title": "부산 수산물 가공업체 <b>베타산업</b> 대표, 회삿돈 횡령 혐의 기소",
+      "originallink": "https://news.example.com/2025/09/busan-beta",
+      "link": "https://news.example.com/2025/09/busan-beta",
+      "description": "부산 사하구의 수산물 가공업체 <b>베타산업</b> 대표 A씨가 회삿돈 수억 원을 빼돌린 혐의로 재판에 넘겨졌다.",
+      "pubDate": "Thu, 04 Sep 2025 14:10:00 +0900"
+    },
+    {
+      "title": "수원 <b>베타산업</b>, 지역 복지시설에 사무용 가구 기부",
+      "originallink": "https://news.example.com/2026/02/suwon-beta",
+      "link": "https://news.example.com/2026/02/suwon-beta",
+      "description": "경기 수원시의 사무용 가구 유통업체 <b>베타산업</b>이 지역 복지시설에 책상과 의자를 기부했다.",
+      "pubDate": "Wed, 18 Feb 2026 11:00:00 +0900"
+    }
+  ],
+  "감마유통": [
+    {
+      "title": "<b>감마유통</b>, 2019년 납품 지연으로 지자체 경고 처분",
+      "originallink": "https://news.example.com/2019/05/gamma",
+      "link": "https://news.example.com/2019/05/gamma",
+      "description": "인천의 사무용 가구 유통업체 <b>감마유통</b>이 납품 지연으로 경고 처분을 받았다.",
+      "pubDate": "Fri, 10 May 2019 16:00:00 +0900"
+    }
+  ]
+}

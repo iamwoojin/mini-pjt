@@ -1,0 +1,27 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# raw downloads (large public data; only extracted fixtures are committed)
+data/raw/
+
+# local state
+chroma_db/
+*.sqlite
+*.db
+.ouroboros/
+
+# personal working notes (contains internal context)
+CLAUDE.local.md
+
+# pytest
+.pytest_cache/
+
+# claude code local settings (plugins)
+.claude/
