@@ -1,6 +1,6 @@
 # 작업 규칙 (Claude Code가 매 대화 자동으로 읽음)
 
-업체 검증 및 견적 검증 에이전트 미니 프로젝트. 개인 작업 메모는 `CLAUDE.local.md`(gitignore)에 있다.
+구매 업체·가격 검증 에이전트 미니 프로젝트. 개인 작업 메모는 `CLAUDE.local.md`(gitignore)에 있다.
 
 ## 기준 문서
 - 무엇을 만드는지는 `SERVICE.md`가 기준이다. 애매하면 추측하지 말고 물어본다.

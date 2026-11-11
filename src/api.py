@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse
 
 from . import agent, config
 
-app = FastAPI(title="업체 검증 및 견적 검증 에이전트")
+app = FastAPI(title="구매 업체·가격 검증 에이전트")
 
 
 @app.post("/query")
