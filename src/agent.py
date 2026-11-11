@@ -1,14 +1,13 @@
-"""구매 업체·가격 검증 에이전트 (P0: 단일 에이전트).
+"""구매 업체·가격 검증 에이전트: 판정 규칙 · 도구 호출 · 프롬프트.
 
-흐름: 입력 가드레일 → 질문 해석(LLM 구조화 출력) → 견적별 이중 검증(업체·가격) → 규칙 판정 → 권고·조치 → 규정 인용(RAG) → 답변
+흐름 제어(노드·분기·승인 대기)는 src/graph.py의 LangGraph 그래프가 맡는다.
+처리 순서: 입력 가드레일 → 질문 해석(LLM 구조화 출력) → 견적별 이중 검증(업체·가격) → 규칙 판정 → 권고·조치 → 규정 인용(RAG) → 답변
 - 판정 규칙(vendor/price/recommend)은 LLM이 아닌 코드로 고정한다.
 - LLM은 질문 해석, 위험 보도 분류, 규정 질의 답변에만 쓴다.
 """
 from __future__ import annotations
 
 import re
-import time
-import uuid
 from datetime import date
 from typing import Literal
 
@@ -23,7 +22,6 @@ PriceVerdict = Literal["적정", "검토 필요", "과다", "판단 불가"]
 Recommendation = Literal["진행", "조건부", "보류"]
 
 ACTION_LABEL = {"hold_registration": "등록 보류", "request_requote": "재견적 요청"}
-PENDING: dict[str, dict] = {}  # thread_id → 승인 대기 조치 (P0: 메모리 보관)
 
 INJECTION_PATTERNS = [r"시스템\s*지시", r"system\s*prompt", r"무시하고", r"반드시\s*(적정|진행)", r"판정하(고|라)", r"ignore (all|previous)"]
 
@@ -67,7 +65,9 @@ class QuoteItem(BaseModel):
     b_no: str | None = Field(None, description="사업자등록번호 (숫자와 하이픈 그대로)")
     item_text: str = Field(description="견적 품목 원문 표현")
     detail_name: str | None = Field(None, description="조달 세부품명 목록 중 가장 맞는 값. 맞는 것이 없으면 null")
-    spec: str = Field("", description="핵심 규격만 (예: '일반 A4 80g 2500매(250매×10권)', '595×600×895mm', '흑백30cpm', '1칸 210×297mm')")
+    spec: str = Field("", description="질문에 적힌 규격 표현을 빠짐없이 그대로 옮긴다: 등급·용지 크기·평량·매수와 괄호 속 포장 구성, 치수, 형태, 성능. "
+                                     "품목명·수량·가격은 빼고, 질문에 없는 규격은 추가하지 않는다 "
+                                     "(예: 'B4 75g 1000매(500매×2권)', '600×500×900mm', '원형', '컬러20cpm', '2칸 99×38mm')")
     quoted_price: float | None = Field(None, description="견적서에 적힌 단가 숫자 (price_unit 1단위당)")
     price_unit: str | None = Field(None, description="견적 단가의 단위 (개, 상자, 권, 대 등)")
     units_per_benchmark: float = Field(1, description="기준 단위(상자/개/대) 하나에 들어가는 price_unit 수. 예: 권당 가격이고 1상자=10권이면 10, 같은 단위면 1")
@@ -140,9 +140,24 @@ intent 판단 기준:
 질문: {question}"""
 
 
+def ground_spec(spec: str, question: str) -> str:
+    """LLM이 질문에 없는 규격 토큰을 지어내면 버린다 (예시 문구를 베끼는 문제 방지)"""
+    q = tools._norm(question)
+    kept = []
+    for t in spec.split():
+        if tools._norm(t) in q:
+            kept.append(t)
+        elif (base := re.sub(r"\(.*?\)", "", t)) and tools._norm(base) in q:
+            kept.append(base)  # '2500매(250매×10권)' 중 질문에 있는 '2500매'만 남김
+    return " ".join(kept)
+
+
 def parse_query(question: str) -> ParsedQuery:
     prompt = PARSE_PROMPT.format(names=", ".join(tools.known_detail_names()), question=question)
-    return _structured(ParsedQuery).invoke(prompt)
+    parsed = _structured(ParsedQuery).invoke(prompt)
+    for q in parsed.quotes:
+        q.spec = ground_spec(q.spec, question)
+    return parsed
 
 
 def classify_news(supplier: dict, articles: list[dict]) -> list[dict]:
@@ -278,6 +293,11 @@ def verify_quote(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) 
     if q.detail_name and q.quoted_price:
         found = trace.add("search_procurement_prices", {"detail_name": q.detail_name, "spec": q.spec},
                           tools.search_procurement_prices(q.detail_name, q.spec))
+        if not found["matched_spec"] and q.item_text:
+            # 재검색: 해석된 규격으로 못 찾으면 질문 원문의 품목 표현(질문에 있는 토큰만)으로 다시 찾는다
+            retry_spec = ground_spec(q.item_text, req.question)
+            found = trace.add("search_procurement_prices_retry", {"detail_name": q.detail_name, "spec": retry_spec},
+                              tools.search_procurement_prices(q.detail_name, retry_spec))
         calc = trace.add("normalize_price",
                          {"quoted_price": q.quoted_price, "units_per_benchmark": q.units_per_benchmark, "vat_included": q.vat_included},
                          tools.normalize_price(q.quoted_price, q.units_per_benchmark, q.vat_included, found["rows"]))
@@ -317,102 +337,6 @@ def verify_quote(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) 
 
 
 def run(req: QueryRequest) -> dict:
-    """POST /query 처리 → {"answer","contexts","trace"} (+ 승인 대기 시 status/thread_id/action)"""
-    t0 = time.time()
-    trace = Trace()
-
-    # HITL 승인 응답
-    if req.approval and req.thread_id:
-        pending = PENDING.pop(req.thread_id, None)
-        if not pending:
-            return {"answer": "승인 대기 중인 조치를 찾을 수 없습니다.", "contexts": [], "trace": trace.steps}
-        if req.role != "buyer":
-            PENDING[req.thread_id] = pending
-            return {"answer": "조치 승인은 구매 담당자만 할 수 있습니다.", "contexts": [], "trace": trace.steps}
-        verb = "승인" if req.approval == "approve" else "거부"
-        trace.add("approval", req.approval, pending)
-        return {"answer": f"{pending['label']} 조치가 {verb}되었습니다. (데모: 실제 발송·등록 변경은 하지 않습니다)",
-                "contexts": [], "trace": trace.steps, "status": "approved" if verb == "승인" else "rejected"}
-
-    # 입력 가드레일: 문서 속 지시문 탐지(판정은 코드 규칙이라 영향 없음, 답변에 명시)
-    injected = any(re.search(p, req.question, flags=re.I) for p in INJECTION_PATTERNS)
-    trace.add("input_guard", {"role": req.role}, {"injection_detected": injected})
-
-    contexts: dict[str, dict] = {}
-
-    # 규정 질문 모드: 견적 해석 없이 바로 규정 질의
-    if req.mode == "policy" and req.role != "supplier":
-        trace.add("route", {"mode": "policy"}, "policy_question")
-        return _answer_policy(req, contexts, trace, t0)
-
-    parsed = trace.add("parse_query", req.question, parse_query(req.question).model_dump())
-    parsed = ParsedQuery(**parsed)
-
-    # 2차 개선: 규칙 검사를 LLM 분류보다 우선 (범위 밖 품목, 규정 질문)
-    oos = rule_out_of_scope(req.question)
-    if oos and parsed.intent != "other_supplier_info":
-        parsed.intent, parsed.out_of_scope_type = "out_of_scope_item", oos
-    elif parsed.intent in ("unrelated", "verify") and rule_policy_question(req.question) and not any(q.quoted_price for q in parsed.quotes):
-        parsed.intent = "policy_question"
-    trace.add("route", {"rule_out_of_scope": oos, "rule_policy": rule_policy_question(req.question)}, parsed.intent)
-
-    # 공급사 권한 가드레일 (G1)
-    if req.role == "supplier":
-        own = tools.get_supplier_docs(req.supplier_id or "").get("name")
-        others = [q for q in parsed.quotes if q.supplier_name and own and own not in q.supplier_name]
-        if parsed.intent == "other_supplier_info" or others or re.search(r"몇\s*등|순위|얼마에\s*냈", req.question):
-            _cite(trace, contexts, "다른 공급사 견적 금액 순위 비공개")
-            trace.add("guard_G1", req.supplier_id, "blocked")
-            return _finish("다른 공급사의 견적 금액, 순위, 판정 결과는 제공할 수 없습니다. 자사 견적의 검토 상태만 조회할 수 있습니다.",
-                           contexts, trace, t0)
-
-    if parsed.intent == "out_of_scope_item":
-        kind = parsed.out_of_scope_type or "범위 밖 품목"
-        _cite(trace, contexts, "용역 공사 맞춤 제작 중고 가격 검증 대상 아님")
-        return _finish(f"{kind} 견적은 시장가 검증 대상이 아닙니다. 규격이 정해진 물품만 조달 기준가와 비교할 수 있으며, "
-                       f"{kind} 건은 별도의 원가 분석 절차로 검토해 주세요.", contexts, trace, t0)
-
-    if parsed.intent == "unrelated":
-        return _finish("이 서비스는 공급사 견적의 업체 검증과 견적 검증(가격 적정성)을 돕습니다. "
-                       "예: '알파상사(999-99-00001) 견적: 복사용지 A4 80g 2500매 1상자 23,000원(VAT 별도). 진행해도 될까?'",
-                       contexts, trace, t0)
-
-    if parsed.intent == "policy_question" or not parsed.quotes:
-        return _answer_policy(req, contexts, trace, t0)
-
-    blocks, actions = [], []
-    for q in parsed.quotes:
-        block, action = verify_quote(q, req, trace, contexts)
-        blocks.append(block)
-        if action:
-            actions.append({"type": action, "label": ACTION_LABEL[action], "target": f"{q.supplier_name} / {q.item_text}"})
-    if injected:
-        blocks.append("※ 견적서 안의 지시 문구는 검토 대상 데이터로만 보고 판정에 반영하지 않았습니다.")
-    if contexts:
-        blocks.append("근거 규정: " + ", ".join(f"[{k}]" for k in contexts))
-    answer = "\n\n".join(blocks)
-
-    result = _finish(answer, contexts, trace, t0)
-    if actions and req.role == "buyer":
-        thread_id = req.thread_id or uuid.uuid4().hex[:12]
-        PENDING[thread_id] = actions[0]
-        result.update({"status": "pending_approval", "thread_id": thread_id, "action": actions[0]})
-    return result
-
-
-def _answer_policy(req: QueryRequest, contexts: dict, trace: Trace, t0: float) -> dict:
-    """규정 질의 RAG: 조항 검색 → 검색된 조항만 근거로 답변"""
-    hits = trace.add("search_policy", req.question, retriever.search_policy(req.question, k=3))
-    contexts.update({h["doc_id"]: h for h in hits})
-    ctx = "\n".join(f"[{h['doc_id']}] {h['text']}" for h in hits)
-    msg = _llm().invoke("다음 사내 규정만 근거로 질문에 짧게 답하고, 근거 조항을 [doc_id]로 표시하라. "
-                        "규정에 없는 내용은 추측하지 말고 규정에 없다고 답하라. 업체 판정이나 가격 판정은 하지 마라.\n"
-                        f"{ctx}\n\n질문: {req.question}")
-    answer = msg.content if isinstance(msg.content, str) else str(msg.content)
-    trace.add("policy_answer", [h["doc_id"] for h in hits], answer[:200])
-    return _finish(answer, contexts, trace, t0)
-
-
-def _finish(answer: str, contexts: dict, trace: Trace, t0: float) -> dict:
-    trace.add("done", None, {"elapsed_sec": round(time.time() - t0, 2)})
-    return {"answer": answer, "contexts": [{"doc_id": c["doc_id"], "text": c["text"]} for c in contexts.values()], "trace": trace.steps}
+    """POST /query 처리. 흐름은 LangGraph 그래프(src/graph.py)가 담당한다."""
+    from .graph import run as run_graph  # 순환 import 방지
+    return run_graph(req)

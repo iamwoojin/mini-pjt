@@ -152,3 +152,19 @@ def test_fake_numbers_always_use_fixture():
 def test_llm_has_fallback_model():
     assert len(agent._models()) == 2
     assert config.LLM_FALLBACK_MODEL != config.LLM_MODEL
+
+
+# ---------- 규격 근거 확인 (LLM이 질문에 없는 규격을 지어내는 문제) ----------
+
+@pytest.mark.parametrize("spec, question, expected", [
+    ("일반 A4 80g 2500매(250매×10권)", "복사용지 일반 A4 80g 2500매 1상자 23,000원", "일반 A4 80g 2500매"),
+    ("일반 A4 80g 2500매(250매×10권)", "복사용지 일반 A4 80g 2500매(250매×10권) 상자, 권당 2,900원", "일반 A4 80g 2500매(250매×10권)"),
+    ("595×600×895mm", "작업용의자 595x600x895mm 1개", "595×600×895mm"),
+])
+def test_ground_spec(spec, question, expected):
+    assert agent.ground_spec(spec, question) == expected
+
+
+def test_box_spec_does_not_match_volume_pack():
+    found = tools.search_procurement_prices("프린트및복사용지", "일반 A4 80g 2500매")
+    assert "250매×10권" not in found["matched_spec"]
