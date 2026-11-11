@@ -103,7 +103,7 @@ def policy(state: State) -> dict:
 
 def blocked(state: State) -> dict:
     t, req, ctx = _trace(state), _req(state), dict(state.get("contexts", {}))
-    agent._cite(t, ctx, "다른 공급사 견적 금액 순위 비공개")
+    agent._cite(t, ctx, "공급사 비공개")
     t.add("guard_G1", req.supplier_id, "blocked")
     return {"trace": t.steps, "contexts": ctx,
             "answer": "다른 공급사의 견적 금액, 순위, 판정 결과는 제공할 수 없습니다. 자사 견적의 검토 상태만 조회할 수 있습니다."}
@@ -112,7 +112,7 @@ def blocked(state: State) -> dict:
 def out_of_scope(state: State) -> dict:
     t, ctx = _trace(state), dict(state.get("contexts", {}))
     kind = state["parsed"].get("out_of_scope_type") or "범위 밖 품목"
-    agent._cite(t, ctx, "용역 공사 맞춤 제작 중고 가격 검증 대상 아님")
+    agent._cite(t, ctx, "범위 밖")
     return {"trace": t.steps, "contexts": ctx,
             "answer": f"{kind} 견적은 시장가 검증 대상이 아닙니다. 규격이 정해진 물품만 조달 기준가와 비교할 수 있으며, "
                       f"{kind} 건은 별도의 원가 분석 절차로 검토해 주세요."}
@@ -132,6 +132,7 @@ def verify(state: State) -> dict:
         if action:
             actions.append({"type": action, "label": ACTION_LABEL[action], "target": f"{q.supplier_name} / {q.item_text}"})
     if state.get("injected"):
+        agent._cite(t, ctx, "지시문")
         blocks.append("※ 견적서 안의 지시 문구는 검토 대상 데이터로만 보고 판정에 반영하지 않았습니다.")
     if ctx:
         blocks.append("근거 규정: " + ", ".join(f"[{k}]" for k in ctx))

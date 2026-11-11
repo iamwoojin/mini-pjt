@@ -144,15 +144,16 @@
 | 패턴 | 적용 위치 | 상태 |
 |---|---|---|
 | 구조화 출력 (LCEL + Pydantic) | 질문 해석(`ParsedQuery`: 의도·공급사·품목·견적가), 뉴스 위험 분류(`NewsJudgement`) | 구현 |
-| RAG | 사내 규정 5종 37조항 검색 (Chroma + Titan 임베딩), 답변에 `purchase_rule#7` 형식 인용 | 구현 |
+| LangGraph 흐름 | 입력 가드 → 질문 해석 → 분기(규정 질의 / 권한 차단 / 범위 밖 / 무관 / 검증) → 승인 노드 (`src/graph.py`) | 구현 |
+| RAG | 규정 질의는 사내 규정 5종 37조항 임베딩 검색(Chroma + Titan). 판정 근거는 판정 → 조항을 코드로 고정해 정확히 인용 (`purchase_rule#7` 형식) | 구현 |
 | 도구 다중 | 위 도구 7종을 업체 검증 → 가격 검증 → 규정 인용 순으로 호출 | 구현 |
 | 가드레일 | 공급사 권한 게이트(G1), 지시문·인젝션 탐지(G3), 정보 부족 시 "확인 불가"(G4), 범위 밖 품목 규칙 검사 + 안내(G5) | 구현 |
-| HITL | 재견적 요청 · 등록 보류 전 구매 담당자 승인 (`pending_approval` → `approval`) | 구현 (LangGraph interrupt 전환 예정) |
+| HITL | 재견적 요청 · 등록 보류 전 구매 담당자 승인. LangGraph `interrupt` + 체크포인터로 멈추고 같은 `thread_id`로 재개, 재개 전 권한 게이트 | 구현 |
 | Trace | 응답의 `trace` 필드에 단계별 입력·출력 기록 | 구현 |
-| 평가 | `test_queries.csv` 자동 채점(`run_eval.py`), 1차·2차 비교, pytest 단위 테스트 | 구현 / RAGAS · LLM-as-Judge 예정 |
+| 평가 | `test_queries.csv` 자동 채점(`run_eval.py`), RAGAS(`run_ragas.py`), LLM-as-Judge(`run_judge.py`, 다른 모델로 채점), pytest 단위 테스트 | 구현 |
 | Supervisor | 총괄 에이전트가 업체 검증 / 가격 검증 / 규정 검토 에이전트에 작업 분배 | 예정 |
 | MCP | 공급사 · 견적 · 제출 서류 DB를 MCP 서버로 제공 | 예정 |
-| ReAct · 미들웨어 | 규격 매칭 실패 시 규격 표현을 고쳐 재검색, 개인정보 마스킹, API 재시도 | 예정 |
+| 재검색 · 미들웨어 | 규격 매칭 실패 시 품목 원문으로 재검색, 질문에 없는 규격 토큰 제거, 모델 자동 대체 (Haiku → Sonnet) | 구현 / 개인정보 마스킹 · API 재시도 예정 |
 | Plan-Execute · 메모리 | 여러 품목 견적을 품목별로 나눠 처리, 공급사별 검증 이력과 담당자 선호 기억 (SQLite) | 예정 (우선순위 낮음) |
 
 - LLM: Amazon Bedrock Claude Haiku 4.5 (실패 시 Sonnet 4.5로 자동 대체)
@@ -256,6 +257,6 @@
 | 응답 시간 (견적 1품목, 중앙값) | 20초 이내 | 2.9초 | 2.6초 |
 | 가격 판정 구간 일치 (가격 케이스 중 의도한 구간과 같은 비율) | 100% | 10 / 10 | 10 / 10 |
 | 업체에 불리한 오판 (정보 부족을 부적합으로 판정한 건수) | 0건 | 2건 (N02 · N03) | 0건 |
-| RAGAS faithfulness / context_recall | 0.8 이상 | - | 측정 예정 |
-| LLM-as-Judge 평균 (근거 충실성, 이중 검증 완결성) | 4 / 5 이상 | - | 측정 예정 |
+| RAGAS faithfulness / context_recall | 0.8 이상 | - | **0.974 / 1.000** (round4) |
+| LLM-as-Judge 평균 (근거 충실성, 이중 검증 완결성) | 4 / 5 이상 | - | **4.92** (round4, 근거 5.0 · 완결성 4.84) |
 | 수작업 대비 시간 | 품목당 3~5분 → 1분 미만 | 충족 (수 초) | 충족 (수 초) |

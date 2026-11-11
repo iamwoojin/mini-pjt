@@ -44,6 +44,17 @@ def build_index() -> int:
     return _store()._collection.count()
 
 
+@lru_cache
+def _clauses() -> dict[str, str]:
+    return {d.metadata["doc_id"]: d.page_content for d in load_chunks()}
+
+
+def get_clauses(doc_ids: list[str]) -> list[dict]:
+    """판정이 정해진 경우 해당 조항을 doc_id로 정확히 가져온다 (임베딩 검색 없이)"""
+    clauses = _clauses()
+    return [{"doc_id": i, "text": clauses[i]} for i in doc_ids if i in clauses]
+
+
 def search_policy(query: str, k: int = 3) -> list[dict]:
     """규정 조항 검색 → [{"doc_id": "purchase_rule#7", "text": "..."}]"""
     hits = _store().similarity_search(query, k=k)

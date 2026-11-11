@@ -37,10 +37,11 @@ from ragas.llms import LangchainLLMWrapper  # noqa: E402
 from ragas.metrics import context_recall, faithfulness  # noqa: E402
 
 from evaluation.run_eval import parse_note  # noqa: E402
-from src import agent  # noqa: E402
+from src import agent, config  # noqa: E402
 
-TOOL_STEPS = {"check_business_status", "get_supplier_docs", "classify_news", "normalize_price",
-              "search_procurement_prices", "vendor_check_skipped", "guard_G1", "route"}
+TOOL_STEPS = {"parse_query", "check_business_status", "get_supplier_docs", "classify_news", "normalize_price",
+              "search_procurement_prices", "search_procurement_prices_retry", "vendor_check_skipped", "guard_G1", "route",
+              "vendor_verdict", "price_verdict", "recommend"}
 
 
 def tool_context(step: dict) -> str | None:
@@ -49,6 +50,9 @@ def tool_context(step: dict) -> str | None:
         return None
     if s == "search_procurement_prices":
         out = {"matched_spec": out.get("matched_spec"), "unit": out.get("unit"), "rows": len(out.get("rows", []))}
+    if s == "parse_query":  # 견적서 원문을 해석한 내용 (공급사 · 품목 · 견적가 · VAT)
+        out = [{k: q.get(k) for k in ("supplier_name", "b_no", "item_text", "quoted_price", "price_unit", "vat_included")}
+               for q in out.get("quotes", [])]
     if s == "classify_news":
         out = [{k: a.get(k) for k in ("title", "date", "link", "same_company", "risk", "status")} for a in out]
     text = json.dumps({"input": step["input"], "output": out}, ensure_ascii=False)
@@ -58,10 +62,13 @@ def tool_context(step: dict) -> str | None:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", required=True)
+    ap.add_argument("--only", nargs="*", help="특정 id만 실행")
     args = ap.parse_args()
 
     refs = json.loads((BASE / "evaluation" / "ragas_references.json").read_text(encoding="utf-8"))
     rows = [r for r in csv.DictReader(open(BASE / "evaluation" / "test_queries.csv", encoding="utf-8")) if r["id"] in refs]
+    if args.only:
+        rows = [r for r in rows if r["id"] in args.only]
 
     samples, ids = [], []
     for r in rows:
@@ -74,7 +81,11 @@ def main():
         ids.append(r["id"])
         print(f"{r['id']} 답변 생성 완료 (근거 {len(ctx)}개)")
 
-    judge = LangchainLLMWrapper(agent._llm())
+    # ragas가 temperature를 직접 설정하므로 대체 체인이 아닌 단일 모델을 넘긴다
+    # 답변이 길면 문장별 판정 JSON도 길어져 2,000토큰에서 잘리므로 출력 한도를 늘린다
+    from langchain_aws import ChatBedrockConverse
+    judge = LangchainLLMWrapper(ChatBedrockConverse(model=config.LLM_MODEL, region_name=config.AWS_REGION,
+                                                    temperature=0, max_tokens=8000))
     result = evaluate(EvaluationDataset.from_list(samples), metrics=[faithfulness, context_recall], llm=judge,
                       run_config=RunConfig(max_workers=4, timeout=180), show_progress=False)
     df = result.to_pandas() if hasattr(result, "to_pandas") else None

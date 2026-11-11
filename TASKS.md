@@ -34,16 +34,16 @@
 
 ## 3묶음 · 평가 보강 (P1)
 
-- [ ] T13 RAGAS(faithfulness · context_recall) 측정, 정답은 `evaluation/ragas_references.json`
-  - 확인: `evaluation/results/ragas_round2.json` 생성, 보고서에 점수 기록 (목표 0.8)
-- [ ] T14 LLM-as-Judge (근거 충실성 · 이중 검증 완결성, 5점 척도)
-  - 확인: 20건 평균 점수가 보고서에 기록 (목표 4/5)
+- [x] T13 RAGAS(faithfulness · context_recall) 측정, 정답은 `evaluation/ragas_references.json`
+  - 확인: `evaluation/results/ragas_round4.json` 생성, 보고서에 점수 기록 (목표 0.8 → 결과 0.974 / 1.000)
+- [x] T14 LLM-as-Judge (근거 충실성 · 이중 검증 완결성, 5점 척도)
+  - 확인: 평균 점수가 보고서에 기록 (목표 4/5 → 결과 4.92)
 
 ## 4묶음 · 에이전트 구조 (P1)
 
-- [ ] T15 LangGraph 그래프로 전환 (입력 가드 → 해석 → 검증 → 답변 노드), 응답 형식은 그대로
-  - 확인: `run_eval.py --tag round3`가 round2와 같은 통과율
-- [ ] T16 HITL을 LangGraph `interrupt` + 체크포인터로 전환
+- [x] T15 LangGraph 그래프로 전환 (입력 가드 → 해석 → 검증 → 답변 노드), 응답 형식은 그대로
+  - 확인: `run_eval.py --tag round3`가 round2와 같은 통과율 (결과: round3·round4 20/20)
+- [x] T16 HITL을 LangGraph `interrupt` + 체크포인터로 전환
   - 확인: 승인 대기 → 같은 `thread_id`로 approve 시 재개, 임직원 승인은 거부
 - [ ] T17 Supervisor: 업체 검증 / 가격 검증 / 규정 검토 하위 에이전트
   - 확인: trace에 하위 에이전트별 단계가 남고 round3 통과율 유지

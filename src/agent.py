@@ -22,6 +22,7 @@ PriceVerdict = Literal["적정", "검토 필요", "과다", "판단 불가"]
 Recommendation = Literal["진행", "조건부", "보류"]
 
 ACTION_LABEL = {"hold_registration": "등록 보류", "request_requote": "재견적 요청"}
+TODAY_STR = "2026-11-11"  # 평가 재현성을 위해 기준일 고정 (tools.TODAY와 같음)
 
 INJECTION_PATTERNS = [r"시스템\s*지시", r"system\s*prompt", r"무시하고", r"반드시\s*(적정|진행)", r"판정하(고|라)", r"ignore (all|previous)"]
 
@@ -240,14 +241,26 @@ def recommend(vendor: VendorVerdict, price: PriceVerdict) -> tuple[Recommendatio
     return "조건부", None, "가격 협의"
 
 
-POLICY_QUERY = {
-    "부적합": "휴업 폐업 미등록 사업자 부적합 등록 보류",
-    "주의": "위험 보도 설립 1년 인원 서류 누락 주의 조건부",
-    "과다": "기준가 120% 이상 과다 재견적 요청",
-    "검토 필요": "105% 이상 120% 미만 검토 필요 가격 협의",
-    "판단 불가": "같은 규격 표본 3건 미만 판단 불가 수동 확인",
-    "VAT": "부가가치세 표시 없음 별도 가정 환산",
-    "단위": "권당 가격 상자 포장 단위 환산",
+# 판정 → 근거 조항 (판정 규칙이 코드로 고정되어 있으므로 근거 조항도 코드로 고정한다. 3차 개선)
+CLAUSE = {
+    "부적합": ["vendor_criteria#2"],
+    "주의": ["vendor_criteria#7"],
+    "설립": ["vendor_criteria#3"],
+    "인원": ["vendor_criteria#4"],
+    "서류": ["vendor_criteria#5"],
+    "위험 보도": ["vendor_criteria#6", "news_guide#4", "news_guide#5"],
+    "동명": ["news_guide#3"],
+    "가격 판정": ["purchase_rule#5", "price_survey#5"],
+    "과다": ["purchase_rule#7"],
+    "검토 필요": ["purchase_rule#8"],
+    "판단 불가": ["purchase_rule#6", "price_survey#6"],
+    "VAT 가정": ["purchase_rule#10"],
+    "VAT 별도": ["price_survey#3"],
+    "단위": ["price_survey#4"],
+    "조치 권한": ["purchase_rule#9"],
+    "범위 밖": ["purchase_rule#2"],
+    "공급사 비공개": ["security_policy#2"],
+    "지시문": ["security_policy#4"],
 }
 
 
@@ -262,8 +275,12 @@ class Trace:
         return out
 
 
-def _cite(trace: Trace, contexts: dict, query: str) -> None:
-    hits = trace.add("search_policy", query, retriever.search_policy(query, k=1))
+def _cite(trace: Trace, contexts: dict, *keys: str) -> None:
+    """판정 키에 연결된 조항을 정확히 가져와 근거로 붙인다"""
+    ids = [i for k in keys for i in CLAUSE.get(k, []) if i not in contexts]
+    if not ids:
+        return
+    hits = trace.add("search_policy", {"doc_ids": ids, "for": list(keys)}, retriever.get_clauses(ids))
     contexts.update({h["doc_id"]: h for h in hits})
 
 
@@ -287,6 +304,18 @@ def verify_quote(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) 
         articles = trace.add("search_news", name, tools.search_news(name))
         news = trace.add("classify_news", name, classify_news({**docs, "name": name}, articles)) if articles else []
         v, v_reasons = vendor_verdict(nts, docs, news)
+        trace.add("vendor_verdict", {"today": TODAY_STR, "b_stt": nts.get("b_stt"), "tax_type": nts.get("tax_type"),
+                                     "founded": docs.get("founded"), "employees": docs.get("employees"),
+                                     "docs_complete": docs.get("docs_complete"),
+                                     "rule": "휴업·폐업·미등록=부적합 / 위험 보도·설립 1년 미만·인원 3명 미만·서류 누락=주의 / 그 외 적합"},
+                  {"verdict": v, "reasons": v_reasons})
+        reason_text = " ".join(v_reasons)
+        keys = ["부적합"] if v == "부적합" else []
+        keys += [k for k, word in [("설립", "설립 1년 미만"), ("인원", "3명 미만"), ("서류", "서류 누락"),
+                                   ("위험 보도", "위험 보도("), ("동명", "동명 기업")] if word in reason_text]
+        if v == "주의":
+            keys.append("주의")
+        _cite(trace, contexts, *keys)
 
     # ② 가격 검증
     price_lines = []
@@ -299,15 +328,23 @@ def verify_quote(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) 
             found = trace.add("search_procurement_prices_retry", {"detail_name": q.detail_name, "spec": retry_spec},
                               tools.search_procurement_prices(q.detail_name, retry_spec))
         calc = trace.add("normalize_price",
-                         {"quoted_price": q.quoted_price, "units_per_benchmark": q.units_per_benchmark, "vat_included": q.vat_included},
+                         {"quoted_price": q.quoted_price, "price_unit": q.price_unit, "units_per_benchmark": q.units_per_benchmark,
+                          "vat_included": q.vat_included, "matched_spec": found["matched_spec"],
+                          "method": "VAT 포함 환산(별도면 ×1.1) · 포장 단위 환산 후, 같은 규격 조달 단가의 IQR 이상값 제거 중앙값을 기준가로 비교"},
                          tools.normalize_price(q.quoted_price, q.units_per_benchmark, q.vat_included, found["rows"]))
         p = price_verdict(calc["ratio"], calc["samples"])
+        trace.add("price_verdict", {"ratio": calc["ratio"], "samples": calc["samples"],
+                                    "rule": "105% 미만 적정 / 105~120% 검토 필요 / 120% 이상 과다 / 표본 3건 미만 판단 불가"}, p)
+        if calc["benchmark"]:
+            _cite(trace, contexts, "가격 판정")
         if q.units_per_benchmark and q.units_per_benchmark != 1:
             price_lines.append(f"{q.price_unit}당 {_fmt(q.quoted_price)} × {q.units_per_benchmark:g}{q.price_unit} = {found['unit'] or '기준 단위'}당 {_fmt(calc['package_price'])}로 환산")
-            _cite(trace, contexts, POLICY_QUERY["단위"])
+            _cite(trace, contexts, "단위")
         vat_note = " (견적서에 VAT 표시가 없어 VAT 별도로 가정)" if calc["vat_assumed"] else (" (VAT 별도 → 10% 가산)" if q.vat_included is False else "")
         if calc["vat_assumed"]:
-            _cite(trace, contexts, POLICY_QUERY["VAT"])
+            _cite(trace, contexts, "VAT 가정")
+        elif q.vat_included is False:
+            _cite(trace, contexts, "VAT 별도")
         if calc["benchmark"]:
             price_lines.append(f"견적 VAT 포함 {_fmt(calc['quote_vat'])}{vat_note} / 기준가 {_fmt(calc['benchmark'])} "
                                f"(조달청 쇼핑몰 '{found['matched_spec']}' {calc['samples']}건·{calc['vendors']}개 업체 중앙값) = {calc['ratio']:.0%}")
@@ -318,10 +355,14 @@ def verify_quote(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) 
         price_lines.append("품목 규격이나 견적가를 확인할 수 없어 기준가와 비교하지 못함")
 
     rec, action, rec_reason = recommend(v, p)
+    trace.add("recommend", {"vendor": v, "price": p,
+                            "rule": "업체 부적합→보류(등록 보류) / 가격 과다→보류(재견적) / 적합×적정→진행 / 그 외 조건부"},
+              {"recommendation": rec, "action": action, "reason": rec_reason})
 
-    # 규정 인용
-    for key in {v, p} & set(POLICY_QUERY):
-        _cite(trace, contexts, POLICY_QUERY[key])
+    # 규정 인용 (판정 → 조항)
+    _cite(trace, contexts, *[k for k in (p,) if k in ("과다", "검토 필요", "판단 불가")])
+    if action:
+        _cite(trace, contexts, "조치 권한")
 
     lines = [f"[{name}] {q.item_text}",
              f"업체 판정: {v}", *[f"  - {r}" for r in v_reasons],
