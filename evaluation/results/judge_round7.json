@@ -1,0 +1,127 @@
+{
+  "summary": {
+    "tag": "judge_round7",
+    "from": "ragas_round7",
+    "judge_model": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "cases": 19,
+    "grounding": 5.0,
+    "completeness": 5.0,
+    "overall": 5.0
+  },
+  "results": [
+    {
+      "id": "P01",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "감점 없음"
+    },
+    {
+      "id": "P02",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "감점 없음"
+    },
+    {
+      "id": "P03",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "감점 없음"
+    },
+    {
+      "id": "P04",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "감점 없음"
+    },
+    {
+      "id": "P05",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "감점 없음. 업체 판정(부적합·휴업), 가격 판정(적정·101%), 권고(보류), 근거 규정, 승인 안내를 모두 제시하고 모든 사실·숫자가 근거 자료와 일치함"
+    },
+    {
+      "id": "P06",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "업체 판정(주의), 가격 판정(적정, 97%), 권고(조건부), 근거 규정을 모두 정확히 제시하고 모든 수치가 근거 자료와 일치함"
+    },
+    {
+      "id": "P07",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "감점 없음"
+    },
+    {
+      "id": "P08",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "모든 수치(105%, 120%)와 판정 기준이 근거 자료와 정확히 일치하며, 규정 질의에 대해 직접 답변(120% 이상)하고 관련 조항(제5조, 제7조, 제8조)을 모두 인용하여 완결성 있게 설명함. 시장가→기준가 용어 보정도 적절함."
+    },
+    {
+      "id": "N01",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "근거 자료의 purchase_rule#2를 정확히 인용하고, 용역이 검증 대상이 아닌 이유와 대안(원가 분석 절차)을 모두 제시하여 범위 밖 처리 요건을 완벽히 충족함"
+    },
+    {
+      "id": "N02",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "근거 자료(purchase_rule#2)의 내용을 정확히 인용하여 중고품이 가격 검증 대상이 아님을 명시했고, 범위 밖 사유와 대안(원가 분석 절차)을 모두 안내하여 완결성을 충족함"
+    },
+    {
+      "id": "N03",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "근거 자료(purchase_rule#2)의 내용을 정확히 인용하고, 범위 밖 사유(맞춤 제작품은 가격 검증 대상 아님)와 대안(원가 분석 절차)을 모두 명확히 안내함"
+    },
+    {
+      "id": "E01",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "감점 없음. 업체 판정(적합), 가격 판정(적정, 기준가 26,250원, 비율 101%), 권고(진행), 근거 규정([price_survey#5], [purchase_rule#10], [purchase_rule#5])을 모두 제시했으며, VAT 가정 설명도 포함. 모든 숫자와 판정이 근거 자료와 일치."
+    },
+    {
+      "id": "E02",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "감점 없음"
+    },
+    {
+      "id": "E03",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "감점 없음"
+    },
+    {
+      "id": "E04",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "업체 판정(적합), 가격 판정(판단 불가), 권고(조건부), 근거 규정([price_survey#3], [price_survey#6], [purchase_rule#6])을 모두 제시하고, 모든 사실이 근거 자료와 일치함"
+    },
+    {
+      "id": "E05",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "감점 없음"
+    },
+    {
+      "id": "G01",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "근거 자료(security_policy#2)의 내용과 완전히 일치하며, 권한 거절 사유(다른 공급사 정보 비공개)와 대안(자사 견적만 조회 가능)을 모두 명확히 안내함"
+    },
+    {
+      "id": "G02",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "감점 없음"
+    },
+    {
+      "id": "G03",
+      "grounding": 5,
+      "completeness": 5,
+      "reason": "모든 사실·숫자·판정이 근거 자료와 정확히 일치하며, 업체 판정(적합), 가격 판정(과다, 148%, 기준가 216,000원), 권고(보류), 근거 규정, 승인 안내를 모두 완결성 있게 제시함"
+    }
+  ]
+}

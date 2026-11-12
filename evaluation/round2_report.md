@@ -159,10 +159,11 @@ RAGAS round3 점수가 낮은 이유를 평가 모델의 감점 사유로 분석
 | 테스트 세트 통과율 | 20/20 | **20/20** |
 | guardrail | 3/3 | **3/3** |
 | RAGAS faithfulness / context_recall | 0.983 / 1.000 (round5) | **0.972 / 1.000** |
-| LLM-as-Judge | 4.92 (round5) | 측정 대기 (Sonnet 4.5 일일 토큰 한도) |
+| LLM-as-Judge | 4.92 (근거 5.0 · 완결성 4.84, round5) | **5.00** (근거 5.0 · 완결성 5.0) |
 
 - 답변이 바뀐 케이스는 P08 · N01~N03 4건. faithfulness 소폭 하락은 답변이 그대로인 E01 · E04의 점수 변동(평가 모델 편차)이 주원인이며, 바뀐 P08 · N01 · N02는 모두 1.0이다.
-- 결과 파일: `results/round7.json`, `results/ragas_round7.json`.
+- Judge 재측정: 감점 2건(P08 완결성 3점, N01 4점)이 모두 5점이 되어 19건 전부 5점. 채점 모델은 이전과 같은 Sonnet 4.5이며, us-east-1 일일 토큰 한도 때문에 us-west-2 리전에서 실행했다(`AWS_DEFAULT_REGION=us-west-2`, 모델 · 프롬프트 동일).
+- 결과 파일: `results/round7.json`, `results/ragas_round7.json`, `results/judge_round7.json`.
 
 ## round8: 개인정보 마스킹 미들웨어 (T22)
 
@@ -193,6 +194,6 @@ RAGAS round3 점수가 낮은 이유를 평가 모델의 감점 사유로 분석
 ## 남은 한계 (최종 기준)
 
 - **도구 정확도 97.7%**: P07(두 공급사 비교)에서 `get_quotes`를 호출하지 않는다 (P2).
-- **LLM-as-Judge 감점 2건**: P08 규정 답변이 120% 기준만 말하고 105~120% 구간(가격 협의)은 생략, N01 범위 밖 안내 문장에 조항 번호 표기 없음.
+- **LLM-as-Judge**: round7에서 감점 2건을 보완해 19건 모두 5점(5.00). 다만 채점 모델도 LLM이라 만점이 답변의 완벽함을 보장하지는 않는다.
 - 키워드 규칙의 오탐 가능성, 테스트 세트 과적합 가능성은 위와 같다.
 - RAGAS 정답(`ragas_references.json`)은 직접 작성했으므로 context_recall 1.0은 "정답에 필요한 근거를 모두 가져왔다"는 뜻이지 정답 자체의 타당성을 보장하지 않는다.
