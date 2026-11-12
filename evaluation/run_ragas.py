@@ -37,7 +37,8 @@ from ragas.llms import LangchainLLMWrapper  # noqa: E402
 from ragas.metrics import context_recall, faithfulness  # noqa: E402
 
 from evaluation.run_eval import parse_note  # noqa: E402
-from src import agent, config  # noqa: E402
+from src import agent  # noqa: E402
+from src.shared import config  # noqa: E402
 
 TOOL_STEPS = {"parse_query", "check_business_status", "get_supplier_docs", "classify_news", "normalize_price",
               "search_procurement_prices", "search_procurement_prices_retry", "vendor_check_skipped", "guard_G1", "route",

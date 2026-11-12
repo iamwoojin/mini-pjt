@@ -1,7 +1,7 @@
 """판정 규칙 · 가격 환산 · 라우팅 규칙 단위 테스트 (LLM·네트워크 호출 없음).
 
 실행: pytest (mini-pjt 폴더에서)
-기준 숫자는 SERVICE.md 4절, src/config.py, data/docs 규정 문서와 같아야 한다.
+기준 숫자는 SERVICE.md 4절, src/shared/config.py, data/docs 규정 문서와 같아야 한다.
 """
 import sys
 from pathlib import Path
@@ -10,7 +10,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src import agent, config, tools  # noqa: E402
+from src import agent, tools  # noqa: E402
+from src.price import tools as price_tools  # noqa: E402
+from src.shared import config, llm  # noqa: E402
 
 OK_NTS = {"b_stt": "계속사업자", "tax_type": "부가가치세 일반과세자"}
 OK_DOCS = {"founded": "2012-03-01", "employees": 42, "docs_complete": True}
@@ -150,7 +152,7 @@ def test_fake_numbers_always_use_fixture():
 # ---------- 모델 대체 ----------
 
 def test_llm_has_fallback_model():
-    assert len(agent._models()) == 2
+    assert len(llm.models()) == 2
     assert config.LLM_FALLBACK_MODEL != config.LLM_MODEL
 
 
@@ -192,7 +194,7 @@ def test_mixed_unit_samples_are_excluded_with_reason():
 def test_exclude_keywords_and_unit_mismatch():
     row = {"모델": "정품 A", "단가": "100", "업체키": "k1", "단위": "개"}
     rows = [row, dict(row, 모델="재생 토너 B"), dict(row, 모델="렌탈 C"), dict(row, 단위="세트")]
-    kept, condition, excluded = tools._apply_comparable_condition("작업용의자", "595×600×895mm", rows)
+    kept, condition, excluded = price_tools._apply_comparable_condition("작업용의자", "595×600×895mm", rows)
     assert condition["item_id"] == "I04" and [r["모델"] for r in kept] == ["정품 A"]
     assert excluded == {"count": 3, "reasons": {"제외 품목(재생)": 1, "제외 품목(렌탈)": 1, "단가 단위 불일치(세트)": 1}}
 
@@ -207,7 +209,7 @@ def test_box_and_volume_pack_use_different_conditions():
 # ---------- 사내 데이터 접근 (MCP와 직접 호출이 같은 결과) ----------
 
 def test_data_layer_matches_local_tools():
-    from src import data
+    from src.supplier_data import client as data
     assert data.find_supplier("베타산업", None)["id"] == tools.find_supplier("베타산업", None)["id"]
     assert data.get_supplier_docs("S06") == tools.get_supplier_docs("S06")
     assert all(q["supplier_id"] == "S01" for q in data.get_quotes("복사용지", "S01"))

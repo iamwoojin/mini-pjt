@@ -2,7 +2,8 @@
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
-from . import agent, config
+from . import agent
+from .shared import config
 
 app = FastAPI(title="구매 업체·가격 검증 에이전트")
 

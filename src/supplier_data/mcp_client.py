@@ -1,4 +1,4 @@
-"""MCP 클라이언트: 사내 데이터 MCP 서버(src/mcp_server.py)와 세션 하나를 열어 두고 재사용한다.
+"""MCP 클라이언트: 사내 데이터 MCP 서버(src/supplier_data/mcp_server.py)와 세션 하나를 열어 두고 재사용한다.
 
 - 호출마다 서버 프로세스를 띄우면 느리므로, 백그라운드 스레드의 이벤트 루프에서 stdio 세션을 계속 유지한다.
 - 에이전트 코드는 동기 함수이므로 call()이 요청을 큐에 넣고 결과를 기다린다.
@@ -16,8 +16,8 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-SERVER = BASE_DIR / "src" / "mcp_server.py"
+BASE_DIR = Path(__file__).resolve().parents[2]
+SERVER = Path(__file__).resolve().parent / "mcp_server.py"
 
 
 class MCPClient:

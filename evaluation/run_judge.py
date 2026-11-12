@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
 
-from src import agent, config  # noqa: E402
+from src import agent  # noqa: E402
+from src.shared import config, llm  # noqa: E402
 
 
 class Judgement(BaseModel):
@@ -60,7 +61,7 @@ def main():
     args = ap.parse_args()
 
     data = json.loads((BASE / "evaluation" / "results" / f"{args.src}.json").read_text(encoding="utf-8"))
-    judge = agent._model(config.LLM_FALLBACK_MODEL).with_structured_output(Judgement)
+    judge = llm.model(config.LLM_FALLBACK_MODEL).with_structured_output(Judgement)
     results = []
     for case, s in zip(data["results"], data["samples"]):
         j = judge.invoke(PROMPT.format(question=s["user_input"], contexts="\n".join(s["retrieved_contexts"]),

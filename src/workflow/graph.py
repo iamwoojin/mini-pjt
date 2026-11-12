@@ -13,7 +13,8 @@
 
 - Supervisor는 LLM이 아닌 코드로 작업을 배분한다. 이중 검증 원칙상 모든 견적은 업체·가격 검증을 반드시 거치고,
   두 검증은 서로 독립이라 견적별로 병렬 실행한다(LangGraph Send).
-- 판정 함수 · 도구 · 프롬프트는 src/agent.py, 사내 데이터 접근은 src/data.py. 이 파일은 흐름만 담당한다.
+- 판정 · 도구 · 프롬프트는 도메인 폴더(src/vendor, src/price, src/policy), 사내 데이터 접근은 src/supplier_data/client.py.
+  이 파일은 흐름만 담당한다.
 - 승인 대기는 interrupt()로 그래프를 멈추고 체크포인터에 thread_id별 상태를 저장한다.
   같은 thread_id로 approval을 보내면 Command(resume=...)로 재개하며, 재개 전에 권한(구매 담당자만)을 코드로 확인한다.
 """
@@ -30,11 +31,20 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, Send, interrupt
 
-from . import agent, config, data, retriever
-from .agent import ACTION_LABEL, INJECTION_PATTERNS, ParsedQuery, QueryRequest, QuoteItem, Trace
-
-SERVICE_GUIDE = ("이 서비스는 공급사 견적의 업체 검증과 견적 검증(가격 적정성)을 돕습니다. "
-                 "예: '알파상사(999-99-00001) 견적: 복사용지 A4 80g 2500매 1상자 23,000원(VAT 별도). 진행해도 될까?'")
+from ..policy import retriever
+from ..policy.agent import answer_policy_question, policy_review
+from ..policy.citations import cite
+from ..policy.prompts import BLOCKED_ANSWER, OUT_OF_SCOPE_ANSWER
+from ..policy.rules import ACTION_LABEL
+from ..price.agent import price_check
+from ..shared import config
+from ..shared.schemas import QueryRequest, QuoteItem, Trace
+from ..supplier_data import client as data
+from ..vendor.agent import vendor_check
+from .intake import detect_injection, parse_query, rule_out_of_scope, rule_policy_question
+from .middleware import mask_pii
+from .prompts import SERVICE_GUIDE
+from .schemas import ParsedQuery
 
 
 def _merge(a: dict | None, b: dict | None) -> dict:
@@ -63,7 +73,7 @@ def _req(state: dict) -> QueryRequest:
 
 def input_guard(state: State) -> dict:
     t, req = Trace(), _req(state)
-    injected = any(re.search(p, req.question, flags=re.I) for p in INJECTION_PATTERNS)
+    injected = detect_injection(req.question)
     t.add("input_guard", {"role": req.role}, {"injection_detected": injected})
     return {"trace": t.steps, "injected": injected}
 
@@ -74,14 +84,14 @@ def parse(state: State) -> dict:
         t.add("route", {"mode": "policy"}, "policy_question")
         return {"trace": t.steps, "route": "policy"}
 
-    parsed = ParsedQuery(**t.add("parse_query", req.question, agent.parse_query(req.question).model_dump()))
-    oos = agent.rule_out_of_scope(req.question)
+    parsed = ParsedQuery(**t.add("parse_query", req.question, parse_query(req.question).model_dump()))
+    oos = rule_out_of_scope(req.question)
     if oos and parsed.intent != "other_supplier_info":
         parsed.intent, parsed.out_of_scope_type = "out_of_scope_item", oos
-    elif parsed.intent in ("unrelated", "verify") and agent.rule_policy_question(req.question) \
+    elif parsed.intent in ("unrelated", "verify") and rule_policy_question(req.question) \
             and not any(q.quoted_price for q in parsed.quotes):
         parsed.intent = "policy_question"
-    t.add("route", {"rule_out_of_scope": oos, "rule_policy": agent.rule_policy_question(req.question)}, parsed.intent)
+    t.add("route", {"rule_out_of_scope": oos, "rule_policy": rule_policy_question(req.question)}, parsed.intent)
 
     # 공급사 권한 게이트 (G1)는 의도와 관계없이 먼저 본다
     if req.role == "supplier":
@@ -98,36 +108,24 @@ def parse(state: State) -> dict:
 
 def policy(state: State) -> dict:
     t, req, ctx = Trace(), _req(state), {}
-    hits = t.add("search_policy", req.question, retriever.search_policy(req.question, k=3))
-    ctx.update({h["doc_id"]: h for h in hits})
-    joined = "\n".join(f"[{h['doc_id']}] {h['text']}" for h in hits)
-    msg = agent._llm().invoke("다음 사내 규정만 근거로 질문에 간결하게 답하고, 근거 조항을 [doc_id]로 표시하라. "
-                              "질문한 기준만 말하지 말고, 규정에 함께 나온 관련 구간과 각 구간의 처리 절차도 빠짐없이 설명하라 "
-                              "(예: 재견적 기준을 물으면 그보다 낮은 구간의 처리도 함께). "
-                              "규정에 없는 내용은 추측하지 말고 규정에 없다고 답하라. 업체 판정이나 가격 판정은 하지 마라.\n"
-                              f"{joined}\n\n질문: {req.question}")
-    answer = msg.content if isinstance(msg.content, str) else str(msg.content)
-    t.add("policy_answer", [h["doc_id"] for h in hits], answer[:200])
+    answer = answer_policy_question(req.question, t, ctx)
     return {"trace": t.steps, "contexts": ctx, "answer": answer}
 
 
 def blocked(state: State) -> dict:
     t, req, ctx = Trace(), _req(state), {}
-    agent._cite(t, ctx, "공급사 비공개")
+    cite(t, ctx, "공급사 비공개")
     t.add("guard_G1", req.supplier_id, "blocked")
     return {"trace": t.steps, "contexts": ctx,
-            "answer": "다른 공급사의 견적 금액, 순위, 판정 결과는 제공할 수 없습니다. 자사 견적의 검토 상태만 조회할 수 있습니다."}
+            "answer": BLOCKED_ANSWER}
 
 
 def out_of_scope(state: State) -> dict:
     t, ctx = Trace(), {}
     kind = state["parsed"].get("out_of_scope_type") or "범위 밖 품목"
-    agent._cite(t, ctx, "범위 밖")
+    cite(t, ctx, "범위 밖")
     return {"trace": t.steps, "contexts": ctx,
-            "answer": f"{kind} 견적은 시장가 검증 대상이 아닙니다. [purchase_rule#2]\n"
-                      f"- 근거: 구매규정 제2조(적용 범위)는 규격이 정해진 간접구매 물품(사무용품, 지류, 사무용 가구, 사무기기 등)에 적용됩니다. "
-                      f"용역, 공사, 맞춤 제작품, 중고품은 시장 기준가로 검증할 수 없으므로 가격 검증 대상이 아닙니다.\n"
-                      f"- 다음 절차: 같은 제2조에 따라 별도의 원가 분석 절차로 검토해 주세요."}
+            "answer": OUT_OF_SCOPE_ANSWER.format(kind=kind)}
 
 
 def unrelated(state: State) -> dict:
@@ -155,7 +153,7 @@ def vendor_agent(task: dict) -> dict:
     t, ctx = Trace(), {}
     q, req = QuoteItem(**task["quote"]), _req(task)
     t.add("vendor_agent", {"quote": task["idx"], "supplier": q.supplier_name, "b_no": q.b_no}, "start")
-    result = agent.vendor_check(q, req, t, ctx)
+    result = vendor_check(q, req, t, ctx)
     t.add("vendor_agent", {"quote": task["idx"]}, {"verdict": result["verdict"]})
     return {"trace": t.steps, "contexts": ctx, "vendor_results": [{"idx": task["idx"], **result}]}
 
@@ -164,7 +162,7 @@ def price_agent(task: dict) -> dict:
     t, ctx = Trace(), {}
     q, req = QuoteItem(**task["quote"]), _req(task)
     t.add("price_agent", {"quote": task["idx"], "item": q.item_text, "quoted_price": q.quoted_price}, "start")
-    result = agent.price_check(q, req, t, ctx)
+    result = price_check(q, req, t, ctx)
     t.add("price_agent", {"quote": task["idx"]}, {"verdict": result["verdict"]})
     return {"trace": t.steps, "contexts": ctx, "price_results": [{"idx": task["idx"], **result}]}
 
@@ -179,12 +177,12 @@ def policy_agent(state: State) -> dict:
     blocks, actions = [], []
     for i, qd in enumerate(state["parsed"]["quotes"]):
         q = QuoteItem(**qd)
-        block, action = agent.policy_review(q, req, vendors[i], prices[i], t, ctx)
+        block, action = policy_review(q, req, vendors[i], prices[i], t, ctx)
         blocks.append(block)
         if action:
             actions.append({"type": action, "label": ACTION_LABEL[action], "target": f"{q.supplier_name} / {q.item_text}"})
     if state.get("injected"):
-        agent._cite(t, ctx, "지시문")
+        cite(t, ctx, "지시문")
         blocks.append("※ 견적서 안의 지시 문구는 검토 대상 데이터로만 보고 판정에 반영하지 않았습니다.")
     if ctx:
         blocks.append("근거 규정: " + ", ".join(f"[{k}]" for k in sorted(ctx)))
@@ -245,7 +243,7 @@ def run(req: QueryRequest) -> dict:
     개인정보 마스킹 미들웨어(security_policy 제5조): 입구에서 질문을 가린 뒤 그래프를 실행하므로
     LLM · trace에 원본이 가지 않는다. 출구에서 답변 · trace를 한 번 더 가린다.
     """
-    masked, counts = agent.mask_pii(req.question)
+    masked, counts = mask_pii(req.question)
     if counts:
         req = req.model_copy(update={"question": masked})
     res = _run(req)
@@ -258,8 +256,8 @@ def run(req: QueryRequest) -> dict:
         found = ", ".join(f"{k} {n}건" for k, n in counts.items())
         res["answer"] = f"{res['answer']}\n\n※ 질문에 포함된 개인정보({found})는 가린 뒤 처리했습니다. [security_policy#5]"
     # 출구 검사: 사내 데이터 · LLM 출력에서 섞여 들어온 개인정보도 가린다
-    res["answer"] = agent.mask_pii(res["answer"])[0]
-    res["trace"] = json.loads(agent.mask_pii(json.dumps(res["trace"], ensure_ascii=False, default=str))[0])
+    res["answer"] = mask_pii(res["answer"])[0]
+    res["trace"] = json.loads(mask_pii(json.dumps(res["trace"], ensure_ascii=False, default=str))[0])
     return res
 
 

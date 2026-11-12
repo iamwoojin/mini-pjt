@@ -1,10 +1,15 @@
-"""경로·환경 설정. 실행 위치와 무관하게 동작하도록 모든 경로는 이 파일 기준 절대 경로로 만든다."""
+"""경로 · 환경 · 판정 기준 설정 (모든 도메인 공통).
+
+실행 위치와 무관하게 동작하도록 모든 경로는 이 파일 기준 절대 경로로 만든다
+(src/shared/config.py → 저장소 루트는 parents[2]).
+"""
 import os
+from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BASE_DIR / "data"
 DOCS_DIR = DATA_DIR / "docs"
 FIXTURE_DIR = DATA_DIR / "fixtures"
@@ -22,6 +27,9 @@ LLM_MODEL = os.getenv("LLM_MODEL", "global.anthropic.claude-haiku-4-5-20251001-v
 LLM_FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "global.anthropic.claude-sonnet-4-5-20250929-v1:0")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "amazon.titan-embed-text-v2:0")
 AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+
+# 평가 재현성을 위해 판정 기준일을 고정한다 (설립 연수 · 뉴스 최근 3년 계산)
+TODAY = date(2026, 11, 11)
 
 # 판정 기준 (data/docs의 규정 문서와 같은 숫자를 유지할 것)
 PRICE_REVIEW_RATIO = 1.05   # 이상이면 검토 필요
