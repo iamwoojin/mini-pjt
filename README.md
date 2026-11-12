@@ -164,3 +164,16 @@ python evaluation/run_judge.py --from ragas_<태그> --tag judge_<태그>   # LL
 ## 데이터 안내
 
 공급사명·사업자번호·견적·뉴스·규정은 모두 가상 데이터입니다. 실제 데이터는 국세청 사업자 상태 API와 조달청 나라장터쇼핑몰 품목 등록 내역(공개 데이터, 업체명·사업자번호 제외 후 추출)입니다. 원본 CSV(`data/raw/`)는 용량이 커서 저장소에 포함하지 않습니다.
+
+## API 키
+
+저장소에는 키가 들어 있지 않습니다. 실행하는 사람이 `.env.example`을 복사해 본인 키를 넣습니다.
+
+| 키 | 필요한 경우 |
+|---|---|
+| `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` | 서버 실행, `run_eval.py` · RAGAS · Judge (Bedrock LLM · 임베딩 호출) |
+| `DATA_GO_KR_API_KEY` | `API_MODE=LIVE`로 국세청 실시간 조회를 할 때만. 평가(fixture 모드)에는 필요 없음 |
+| (없음) | `pytest` 단위 테스트 72건은 LLM을 호출하지 않아 키 없이 실행됨 |
+
+- `.env`는 `.gitignore`로 제외되어 커밋되지 않는다. 개발 중에는 저장소 밖 상위 폴더의 `.env`를 읽는다 (`src/config.py`).
+- 실행 결과는 키 없이도 `evaluation/results/`의 평가 결과 파일과 보고서로 확인할 수 있다.
