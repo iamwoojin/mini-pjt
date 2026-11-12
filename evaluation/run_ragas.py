@@ -48,8 +48,9 @@ def tool_context(step: dict) -> str | None:
     s, out = step["step"], step["output"]
     if s not in TOOL_STEPS:
         return None
-    if s == "search_procurement_prices":
-        out = {"matched_spec": out.get("matched_spec"), "unit": out.get("unit"), "rows": len(out.get("rows", []))}
+    if s in ("search_procurement_prices", "search_procurement_prices_retry"):
+        out = {"matched_spec": out.get("matched_spec"), "unit": out.get("unit"), "rows": len(out.get("rows", [])),
+               "excluded": out.get("excluded")}
     if s == "parse_query":  # 견적서 원문을 해석한 내용 (공급사 · 품목 · 견적가 · VAT)
         out = [{k: q.get(k) for k in ("supplier_name", "b_no", "item_text", "quoted_price", "price_unit", "vat_included")}
                for q in out.get("quotes", [])]

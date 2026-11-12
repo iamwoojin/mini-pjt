@@ -170,6 +170,40 @@ def test_box_spec_does_not_match_volume_pack():
     assert "250매×10권" not in found["matched_spec"]
 
 
+# ---------- 가격 비교 가능 조건 (T24, 강사 피드백 반영) ----------
+
+@pytest.mark.parametrize("item_id", list(config.COMPARABLE_CONDITIONS))
+def test_fixed_conditions_keep_all_matched_samples(item_id):
+    c = config.COMPARABLE_CONDITIONS[item_id]
+    found = tools.search_procurement_prices(c["detail_name"], c["spec"])
+    assert found["matched_spec"] == c["spec"]
+    assert found["condition"]["item_id"] == item_id and found["condition"]["fixed"]
+    assert found["unit"] == c["unit"]
+    assert found["excluded"]["count"] == 0 and len(found["rows"]) >= config.MIN_PRICE_SAMPLES
+
+
+def test_mixed_unit_samples_are_excluded_with_reason():
+    found = tools.search_procurement_prices("라벨용지", "1칸 168×107mm")
+    assert found["unit"] == "매" and not found["condition"]["fixed"]
+    assert len(found["rows"]) == 4
+    assert found["excluded"] == {"count": 1, "reasons": {"단가 단위 불일치(롤)": 1}}
+
+
+def test_exclude_keywords_and_unit_mismatch():
+    row = {"모델": "정품 A", "단가": "100", "업체키": "k1", "단위": "개"}
+    rows = [row, dict(row, 모델="재생 토너 B"), dict(row, 모델="렌탈 C"), dict(row, 단위="세트")]
+    kept, condition, excluded = tools._apply_comparable_condition("작업용의자", "595×600×895mm", rows)
+    assert condition["item_id"] == "I04" and [r["모델"] for r in kept] == ["정품 A"]
+    assert excluded == {"count": 3, "reasons": {"제외 품목(재생)": 1, "제외 품목(렌탈)": 1, "단가 단위 불일치(세트)": 1}}
+
+
+def test_box_and_volume_pack_use_different_conditions():
+    box = tools.search_procurement_prices("프린트및복사용지", "일반 A4 80g 2500매")
+    vol = tools.search_procurement_prices("프린트및복사용지", "일반 A4 80g 2500매(250매×10권)")
+    assert box["condition"]["item_id"] == "I01" and vol["condition"]["item_id"] == "I02"
+    assert {r["업체키"] + r["모델"] for r in box["rows"]}.isdisjoint({r["업체키"] + r["모델"] for r in vol["rows"]})
+
+
 # ---------- 사내 데이터 접근 (MCP와 직접 호출이 같은 결과) ----------
 
 def test_data_layer_matches_local_tools():

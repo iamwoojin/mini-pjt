@@ -34,7 +34,9 @@ def _store() -> Chroma:
     emb = BedrockEmbeddings(model_id=config.EMBED_MODEL, region_name=config.AWS_REGION)
     store = Chroma(collection_name=COLLECTION, embedding_function=emb, persist_directory=str(PERSIST_DIR))
     chunks = load_chunks()
-    if store._collection.count() != len(chunks):
+    # 조항 수뿐 아니라 내용이 바뀌어도 다시 만든다 (규정 문구 수정이 검색에 반영되도록)
+    stored = store._collection.get(include=["documents"])
+    if dict(zip(stored["ids"], stored["documents"])) != {d.metadata["doc_id"]: d.page_content for d in chunks}:
         store.reset_collection()
         store.add_documents(chunks, ids=[d.metadata["doc_id"] for d in chunks])
     return store

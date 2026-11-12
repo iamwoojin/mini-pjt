@@ -257,6 +257,7 @@ CLAUSE = {
     "VAT 가정": ["purchase_rule#10"],
     "VAT 별도": ["price_survey#3"],
     "단위": ["price_survey#4"],
+    "비교 조건": ["price_survey#2"],
     "조치 권한": ["purchase_rule#9"],
     "범위 밖": ["purchase_rule#2"],
     "공급사 비공개": ["security_policy#2"],
@@ -339,7 +340,12 @@ def price_check(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) -
     calc = trace.add("normalize_price",
                      {"quoted_price": q.quoted_price, "price_unit": q.price_unit, "units_per_benchmark": q.units_per_benchmark,
                       "vat_included": q.vat_included, "matched_spec": found["matched_spec"],
-                      "method": "VAT 포함 환산(별도면 ×1.1) · 포장 단위 환산 후, 같은 규격 조달 단가의 IQR 이상값 제거 중앙값을 기준가로 비교"},
+                      "condition": found.get("condition"),
+                      "samples_filter": {"matched": len(found["rows"]) + found["excluded"]["count"],
+                                         "kept": len(found["rows"]), "excluded": found["excluded"]["count"],
+                                         "reasons": found["excluded"]["reasons"]} if found["matched_spec"] else None,
+                      "method": "비교 가능 조건(세부품명·규격·기준 단위·포장 구성, 호환·재생·중고·렌탈 제외)을 만족한 표본만 사용. "
+                                "VAT 포함 환산(별도면 ×1.1) · 포장 단위 환산 후, IQR 이상값 제거 중앙값을 기준가로 비교"},
                      tools.normalize_price(q.quoted_price, q.units_per_benchmark, q.vat_included, found["rows"]))
     p = price_verdict(calc["ratio"], calc["samples"])
     trace.add("price_verdict", {"ratio": calc["ratio"], "samples": calc["samples"],
@@ -359,6 +365,10 @@ def price_check(q: QuoteItem, req: QueryRequest, trace: Trace, contexts: dict) -
                      f"(조달청 쇼핑몰 '{found['matched_spec']}' {calc['samples']}건·{calc['vendors']}개 업체 중앙값) = {calc['ratio']:.0%}")
     else:
         lines.append(f"같은 규격의 조달 표본이 {calc['samples']}건이라 기준가를 정할 수 없음{vat_note}")
+    if found["matched_spec"] and found["excluded"]["count"]:
+        reasons = ", ".join(f"{r} {n}건" for r, n in found["excluded"]["reasons"].items())
+        lines.append(f"비교 조건(기준 단위 '{found['unit']}')에 맞지 않는 표본 제외: {reasons}")
+        _cite(trace, contexts, "비교 조건")
     return {"verdict": p, "lines": lines}
 
 

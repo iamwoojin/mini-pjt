@@ -140,15 +140,50 @@ def search_procurement_prices(detail_name: str, spec: str) -> dict:
             if score > best_score:
                 best, best_score = g_spec, score
     if best is None:
-        return {"detail_name": detail_name, "matched_spec": None, "unit": None, "rows": [], "candidates": []}
-    g = groups[best]
+        return {"detail_name": detail_name, "matched_spec": None, "unit": None, "rows": [], "candidates": [],
+                "condition": None, "excluded": {"count": 0, "reasons": {}}}
+    kept, condition, excluded = _apply_comparable_condition(detail_name, best, groups[best])
     return {
         "detail_name": detail_name,
         "matched_spec": best,
-        "unit": g[0]["단위"],
-        "rows": [{"모델": r["모델"], "단가": float(r["단가"]), "업체키": r["업체키"]} for r in g],
+        "unit": condition["unit"],
+        "rows": [{"모델": r["모델"], "단가": float(r["단가"]), "업체키": r["업체키"]} for r in kept],
         "candidates": candidates,
+        "condition": condition,
+        "excluded": excluded,
     }
+
+
+def _apply_comparable_condition(detail_name: str, spec: str, rows: list[dict]) -> tuple[list[dict], dict, dict]:
+    """규격이 일치한 묶음에서 비교 가능 조건(config.COMPARABLE_CONDITIONS)을 만족한 표본만 남긴다.
+
+    - 고정 조건이 있는 품목: 그 기준 단위와 다른 단가 단위는 제외
+    - 고정 조건이 없는 품목: 묶음 안에서 가장 많은 단위를 기준 단위로 삼고 나머지는 제외
+    - 모델명에 호환·재생·리필·중고·렌탈·임대가 들어 있으면 제외
+    반환: (남은 행, 적용 조건, {"count": 제외 수, "reasons": {사유: 건수}})
+    """
+    fixed = next((dict(c, item_id=k) for k, c in config.COMPARABLE_CONDITIONS.items()
+                  if c["detail_name"] == detail_name and c["spec"] == spec), None)
+    if fixed:
+        condition = {"item_id": fixed["item_id"], "detail_name": detail_name, "spec": spec,
+                     "unit": fixed["unit"], "pack": fixed["pack"], "fixed": True}
+    else:
+        units = [r["단위"] for r in rows]
+        unit = max(dict.fromkeys(units), key=units.count)  # 동률이면 먼저 나온 단위
+        condition = {"item_id": None, "detail_name": detail_name, "spec": spec, "unit": unit, "pack": None, "fixed": False}
+
+    kept, reasons = [], {}
+    for r in rows:
+        keyword = next((k for k in config.PRICE_EXCLUDE_KEYWORDS if k in r["모델"]), None)
+        if r["단위"] != condition["unit"]:
+            reason = f"단가 단위 불일치({r['단위']})"
+        elif keyword:
+            reason = f"제외 품목({keyword})"
+        else:
+            kept.append(r)
+            continue
+        reasons[reason] = reasons.get(reason, 0) + 1
+    return kept, condition, {"count": len(rows) - len(kept), "reasons": reasons}
 
 
 def _iqr_filter(prices: list[float]) -> tuple[list[float], list[float]]:

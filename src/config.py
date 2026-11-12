@@ -32,5 +32,23 @@ NEWS_LOOKBACK_YEARS = 3
 MIN_COMPANY_AGE_YEARS = 1
 MIN_EMPLOYEES = 3
 
+# 가격 비교 가능 조건 (SERVICE.md '비교 가능 조건' 표 · price_survey 제2조와 같게 유지)
+# 아래 조건을 모두 만족한 조달 표본만 기준가(IQR 후 중앙값) 계산에 넣는다.
+# spec은 조달 데이터의 규격 문자열과 정확히 같아야 한다. pack은 기준 단위 하나의 포장 구성.
+COMPARABLE_CONDITIONS = {
+    "I01": {"detail_name": "프린트및복사용지", "spec": "일반, A4, 80g/㎡, 2500매/상자", "unit": "상자", "pack": "2,500매 (낱장 묶음)"},
+    "I02": {"detail_name": "프린트및복사용지", "spec": "일반, A4, 80g/㎡, 2500매(250매×10권)/상자", "unit": "상자", "pack": "10권 (권당 250매)"},
+    "I03": {"detail_name": "중질지", "spec": "A4, 70g/㎡, 2500매/상자", "unit": "상자", "pack": "2,500매"},
+    "I04": {"detail_name": "작업용의자", "spec": "595×600×895mm", "unit": "개", "pack": "1개"},
+    "I05": {"detail_name": "캐비닛", "spec": "800×400×800mm", "unit": "개", "pack": "1개"},
+    "I06": {"detail_name": "회의용탁자", "spec": "1800×900×720mm, 사각형", "unit": "개", "pack": "1개"},
+    "I07": {"detail_name": "이동형파일서랍", "spec": "400×800×720mm, 3단", "unit": "개", "pack": "1개"},
+    "I08": {"detail_name": "사무실칸막이", "spec": "1200×30×1160mm", "unit": "개", "pack": "1개"},
+    "I09": {"detail_name": "문서세단기", "spec": "270mm", "unit": "대", "pack": "1대"},
+    "I10": {"detail_name": "전자복사기", "spec": "흑백30cpm", "unit": "대", "pack": "1대"},
+}
+# 모델명에 들어 있으면 비교 표본에서 제외 (신품·정품 기준 비교를 위해)
+PRICE_EXCLUDE_KEYWORDS = ("호환", "재생", "리필", "중고", "렌탈", "임대")
+
 # 입력 가드레일: 질문 최대 길이 (비용·시간 보호, 견적 여러 건도 충분한 길이)
 MAX_QUESTION_CHARS = 2000
