@@ -100,7 +100,9 @@ def policy(state: State) -> dict:
     hits = t.add("search_policy", req.question, retriever.search_policy(req.question, k=3))
     ctx.update({h["doc_id"]: h for h in hits})
     joined = "\n".join(f"[{h['doc_id']}] {h['text']}" for h in hits)
-    msg = agent._llm().invoke("다음 사내 규정만 근거로 질문에 짧게 답하고, 근거 조항을 [doc_id]로 표시하라. "
+    msg = agent._llm().invoke("다음 사내 규정만 근거로 질문에 간결하게 답하고, 근거 조항을 [doc_id]로 표시하라. "
+                              "질문한 기준만 말하지 말고, 규정에 함께 나온 관련 구간과 각 구간의 처리 절차도 빠짐없이 설명하라 "
+                              "(예: 재견적 기준을 물으면 그보다 낮은 구간의 처리도 함께). "
                               "규정에 없는 내용은 추측하지 말고 규정에 없다고 답하라. 업체 판정이나 가격 판정은 하지 마라.\n"
                               f"{joined}\n\n질문: {req.question}")
     answer = msg.content if isinstance(msg.content, str) else str(msg.content)
@@ -121,8 +123,10 @@ def out_of_scope(state: State) -> dict:
     kind = state["parsed"].get("out_of_scope_type") or "범위 밖 품목"
     agent._cite(t, ctx, "범위 밖")
     return {"trace": t.steps, "contexts": ctx,
-            "answer": f"{kind} 견적은 시장가 검증 대상이 아닙니다. 규격이 정해진 물품만 조달 기준가와 비교할 수 있으며, "
-                      f"{kind} 건은 별도의 원가 분석 절차로 검토해 주세요."}
+            "answer": f"{kind} 견적은 시장가 검증 대상이 아닙니다. [purchase_rule#2]\n"
+                      f"- 근거: 구매규정 제2조(적용 범위)는 규격이 정해진 간접구매 물품(사무용품, 지류, 사무용 가구, 사무기기 등)에 적용됩니다. "
+                      f"용역, 공사, 맞춤 제작품, 중고품은 시장 기준가로 검증할 수 없으므로 가격 검증 대상이 아닙니다.\n"
+                      f"- 다음 절차: 같은 제2조에 따라 별도의 원가 분석 절차로 검토해 주세요."}
 
 
 def unrelated(state: State) -> dict:
