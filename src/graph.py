@@ -19,6 +19,7 @@
 """
 from __future__ import annotations
 
+import json
 import operator
 import re
 import time
@@ -239,7 +240,30 @@ def _response(values: dict[str, Any], t0: float) -> dict:
 
 
 def run(req: QueryRequest) -> dict:
-    """POST /query 처리 → {"answer","contexts","trace"} (+ 승인 대기 시 status/thread_id/action)"""
+    """POST /query 처리 → {"answer","contexts","trace"} (+ 승인 대기 시 status/thread_id/action)
+
+    개인정보 마스킹 미들웨어(security_policy 제5조): 입구에서 질문을 가린 뒤 그래프를 실행하므로
+    LLM · trace에 원본이 가지 않는다. 출구에서 답변 · trace를 한 번 더 가린다.
+    """
+    masked, counts = agent.mask_pii(req.question)
+    if counts:
+        req = req.model_copy(update={"question": masked})
+    res = _run(req)
+    if counts:
+        clauses = retriever.get_clauses(["security_policy#5"])
+        res["trace"].insert(0, {"step": "mask_pii", "input": {"types": list(counts)}, "output": counts})
+        res["trace"].insert(1, {"step": "search_policy", "input": {"doc_ids": ["security_policy#5"], "for": ["개인정보"]},
+                                "output": clauses})
+        res["contexts"] += [c for c in clauses if c["doc_id"] not in {x["doc_id"] for x in res["contexts"]}]
+        found = ", ".join(f"{k} {n}건" for k, n in counts.items())
+        res["answer"] = f"{res['answer']}\n\n※ 질문에 포함된 개인정보({found})는 가린 뒤 처리했습니다. [security_policy#5]"
+    # 출구 검사: 사내 데이터 · LLM 출력에서 섞여 들어온 개인정보도 가린다
+    res["answer"] = agent.mask_pii(res["answer"])[0]
+    res["trace"] = json.loads(agent.mask_pii(json.dumps(res["trace"], ensure_ascii=False, default=str))[0])
+    return res
+
+
+def _run(req: QueryRequest) -> dict:
     t0 = time.time()
 
     # HITL 재개: 권한 게이트를 먼저 통과해야 재개한다

@@ -219,3 +219,40 @@ def test_too_long_question_is_rejected_before_llm():
     res = agent.run(agent.QueryRequest(question="가" * (config.MAX_QUESTION_CHARS + 1)))
     assert "너무 깁니다" in res["answer"]
     assert [s["step"] for s in res["trace"]] == ["input_guard", "done"]
+
+
+# ---------- 개인정보 마스킹 (T22, security_policy 제5조) ----------
+
+@pytest.mark.parametrize("text, label, kind", [
+    ("대표 주민번호 900101-1234567 입니다", "[주민번호]", "주민번호"),
+    ("주민번호 0503154123456", "[주민번호]", "주민번호"),
+    ("담당 010-1234-5678", "[전화번호]", "전화번호"),
+    ("담당 01012345678", "[전화번호]", "전화번호"),
+    ("대표번호 02-123-4567", "[전화번호]", "전화번호"),
+    ("지점 031.123.4567", "[전화번호]", "전화번호"),
+    ("메일 kim.d@example.co.kr 로", "[이메일]", "이메일"),
+])
+def test_mask_pii_masks(text, label, kind):
+    masked, counts = agent.mask_pii(text)
+    assert label in masked and counts == {kind: 1}
+
+
+@pytest.mark.parametrize("text", [
+    "한빛오피스(사업자번호 999-00-00001) 견적",   # 사업자번호는 업체 검증에 필요
+    "사업자번호 9990000001",
+    "작업용의자 230,000원, 1,500,000원(VAT 별도)",
+    "595×600×895mm 2500매(250매×10권)/상자",
+    "견적일 2026-11-12, 계약기간 20261110~20270131",
+])
+def test_mask_pii_keeps_business_data(text):
+    assert agent.mask_pii(text) == (text, {})
+
+
+def test_mask_pii_no_false_positive_on_project_data():
+    import csv
+    files = [config.BASE_DIR / "evaluation" / "test_queries.csv", config.DATA_DIR / "suppliers.json",
+             *config.FIXTURE_DIR.glob("*.json"), *config.DOCS_DIR.glob("*.md")]
+    hits = {f.name: agent.mask_pii(f.read_text(encoding="utf-8"))[1] for f in files}
+    assert {k: v for k, v in hits.items() if v} == {}
+    with open(files[0], encoding="utf-8") as fp:
+        assert all(agent.mask_pii(r["input"])[1] == {} for r in csv.DictReader(fp))
