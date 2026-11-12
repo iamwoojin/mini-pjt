@@ -25,3 +25,6 @@ CLAUDE.local.md
 
 # claude code local settings (plugins)
 .claude/
+
+# 다이어그램 작업 폴더 (최종본은 docs/diagrams)
+.archify/
