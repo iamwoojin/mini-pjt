@@ -1,0 +1,442 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "구매 업체·가격 검증 에이전트 구성 (도메인별 구조)",
+    "locale": "ko",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/service.html",
+    "repository": {
+      "url": "https://github.com/iamwoojin/mini-pjt.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "d9d89674b60986c4205d25808a2f8cd1e507fc53"
+    }
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "label": "사용자",
+      "sublabel": "구매 담당자 · 임직원 · 공급사",
+      "pos": [
+        30,
+        290
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/shared/schemas.py",
+          "line": 11,
+          "end_line": 17
+        }
+      ]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "테스트 화면",
+      "sublabel": "web/index.html",
+      "pos": [
+        210,
+        290
+      ],
+      "size": [
+        120,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/index.html",
+          "line": 188,
+          "end_line": 267
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "FastAPI",
+      "sublabel": "src/api.py · POST /query",
+      "pos": [
+        400,
+        290
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/api.py",
+          "line": 1,
+          "end_line": 19
+        }
+      ]
+    },
+    {
+      "id": "workflow",
+      "type": "backend",
+      "label": "workflow/",
+      "sublabel": "마스킹 · 입력 가드 · 해석 · LangGraph",
+      "tag": "Supervisor · HITL",
+      "pos": [
+        610,
+        282
+      ],
+      "size": [
+        200,
+        80
+      ],
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 207,
+          "end_line": 262
+        },
+        {
+          "path": "src/workflow/middleware.py",
+          "line": 9,
+          "end_line": 25
+        },
+        {
+          "path": "src/workflow/intake.py",
+          "line": 31,
+          "end_line": 51
+        }
+      ]
+    },
+    {
+      "id": "bedrock",
+      "type": "cloud",
+      "label": "Amazon Bedrock",
+      "sublabel": "shared/llm.py · Haiku → Sonnet",
+      "pos": [
+        610,
+        30
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/shared/llm.py",
+          "line": 12,
+          "end_line": 30
+        }
+      ]
+    },
+    {
+      "id": "vendor",
+      "type": "backend",
+      "label": "vendor/",
+      "sublabel": "업체 검증 → 업체 판정",
+      "pos": [
+        890,
+        150
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/vendor/agent.py",
+          "line": 31,
+          "end_line": 62
+        },
+        {
+          "path": "src/vendor/rules.py",
+          "line": 10,
+          "end_line": 40
+        }
+      ]
+    },
+    {
+      "id": "price",
+      "type": "backend",
+      "label": "price/",
+      "sublabel": "비교 조건 · 환산 → 가격 판정",
+      "pos": [
+        890,
+        290
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/price/agent.py",
+          "line": 15,
+          "end_line": 59
+        },
+        {
+          "path": "src/price/tools.py",
+          "line": 28,
+          "end_line": 125
+        },
+        {
+          "path": "src/price/rules.py",
+          "line": 11,
+          "end_line": 18
+        }
+      ]
+    },
+    {
+      "id": "policy",
+      "type": "backend",
+      "label": "policy/",
+      "sublabel": "권고표 · 근거 조항 · 규정 답변",
+      "pos": [
+        890,
+        430
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/policy/agent.py",
+          "line": 12,
+          "end_line": 44
+        },
+        {
+          "path": "src/policy/rules.py",
+          "line": 14,
+          "end_line": 30
+        },
+        {
+          "path": "src/policy/citations.py",
+          "line": 10,
+          "end_line": 39
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "supplier_data/ MCP",
+      "sublabel": "공급사 · 견적 · 제출 서류",
+      "pos": [
+        1170,
+        30
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/supplier_data/mcp_server.py",
+          "line": 26,
+          "end_line": 67
+        },
+        {
+          "path": "src/supplier_data/client.py",
+          "line": 20,
+          "end_line": 55
+        }
+      ]
+    },
+    {
+      "id": "nts",
+      "type": "external",
+      "label": "국세청 상태조회 API",
+      "sublabel": "data.go.kr",
+      "tag": "LIVE 모드만",
+      "pos": [
+        1170,
+        160
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/vendor/tools.py",
+          "line": 18,
+          "end_line": 34
+        }
+      ]
+    },
+    {
+      "id": "fixtures",
+      "type": "database",
+      "label": "fixture 데이터",
+      "sublabel": "국세청 · 뉴스 · 조달 단가 CSV",
+      "pos": [
+        1170,
+        290
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/shared/fixtures.py",
+          "line": 11,
+          "end_line": 19
+        },
+        {
+          "path": "src/price/tools.py",
+          "line": 19,
+          "end_line": 21
+        }
+      ]
+    },
+    {
+      "id": "chroma",
+      "type": "database",
+      "label": "Chroma 규정 인덱스",
+      "sublabel": "policy/retriever.py · 조항 단위",
+      "pos": [
+        1170,
+        430
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/policy/retriever.py",
+          "line": 17,
+          "end_line": 63
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "uvicorn 서버 프로세스 (src/)",
+      "wraps": [
+        "api",
+        "workflow",
+        "vendor",
+        "price",
+        "policy"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "stdio 하위 프로세스",
+      "wraps": [
+        "mcp"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "AWS us-east-1",
+      "wraps": [
+        "bedrock"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "use-ui",
+      "from": "users",
+      "to": "web",
+      "label": "견적 입력",
+      "variant": "emphasis"
+    },
+    {
+      "id": "post-query",
+      "from": "web",
+      "to": "api",
+      "label": "POST /query",
+      "variant": "emphasis"
+    },
+    {
+      "id": "to-flow",
+      "from": "api",
+      "to": "workflow",
+      "variant": "emphasis"
+    },
+    {
+      "id": "llm",
+      "from": "workflow",
+      "to": "bedrock",
+      "label": "질문 해석"
+    },
+    {
+      "id": "send-vendor",
+      "from": "workflow",
+      "to": "vendor",
+      "label": "Send"
+    },
+    {
+      "id": "send-price",
+      "from": "workflow",
+      "to": "price",
+      "label": "Send",
+      "variant": "emphasis"
+    },
+    {
+      "id": "review",
+      "from": "workflow",
+      "to": "policy",
+      "label": "권고 · 규정 질의"
+    },
+    {
+      "id": "vendor-mcp",
+      "from": "vendor",
+      "to": "mcp",
+      "label": "MCP 조회"
+    },
+    {
+      "id": "vendor-nts",
+      "from": "vendor",
+      "to": "nts",
+      "label": "상태 조회",
+      "variant": "dashed"
+    },
+    {
+      "id": "price-fixture",
+      "from": "price",
+      "to": "fixtures",
+      "label": "조달 단가"
+    },
+    {
+      "id": "policy-rag",
+      "from": "policy",
+      "to": "chroma",
+      "label": "조항 검색"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "도메인별 폴더",
+      "items": [
+        "vendor · price · policy마다 tools · rules · agent · prompts · schemas",
+        "shared/: config · Bedrock LLM 클라이언트 · 공통 스키마"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "판정은 코드, LLM은 해석만",
+      "items": [
+        "업체 · 가격 판정과 권고는 각 도메인의 rules.py",
+        "LLM은 질문 해석 · 뉴스 분류(vendor) · 규정 답변(policy)"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "가드레일 · 재현성",
+      "items": [
+        "LLM 호출 전 개인정보 마스킹 · 조치는 구매 담당자 승인 후",
+        "평가는 fixture 모드, 국세청은 LIVE에서만 실시간"
+      ]
+    }
+  ]
+}

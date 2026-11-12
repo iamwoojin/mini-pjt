@@ -68,6 +68,7 @@ POST /query ─ 개인정보 마스킹 ─ 입력 가드레일 ─ 질문 해석
 
 - **판정은 LLM이 아니라 코드**가 한다(업체 판정 · 가격 판정 · 권고 · 가격 환산). LLM은 질문 해석, 뉴스 분류, 규정 답변 작성에만 쓴다.
 - 판정 기준 숫자는 [src/shared/config.py](src/shared/config.py)와 [data/docs/](data/docs/) 규정 문서가 같다.
+- 다이어그램 (내려받아 브라우저로 열기): [구성도](docs/diagrams/service.html) · [요청 처리 흐름](docs/diagrams/query-flow.html). 원본은 같은 폴더의 `*.candidate.json`
 
 ### 사용한 패턴
 

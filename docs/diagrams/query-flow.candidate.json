@@ -1,0 +1,487 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "POST /query 처리 흐름 (도메인별 구조)",
+    "locale": "ko",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/query-flow.html",
+    "repository": {
+      "url": "https://github.com/iamwoojin/mini-pjt.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "d9d89674b60986c4205d25808a2f8cd1e507fc53"
+    }
+  },
+  "lanes": [
+    {
+      "id": "entry",
+      "label": "요청 · 응답"
+    },
+    {
+      "id": "exits",
+      "label": "바로 답하는 경로",
+      "variant": "exception"
+    },
+    {
+      "id": "vdata",
+      "label": "업체 데이터"
+    },
+    {
+      "id": "vlane",
+      "label": "업체 검증 에이전트"
+    },
+    {
+      "id": "flow",
+      "label": "LangGraph 흐름"
+    },
+    {
+      "id": "plane",
+      "label": "가격 검증 에이전트"
+    },
+    {
+      "id": "pdata",
+      "label": "가격 데이터"
+    }
+  ],
+  "mainPath": [
+    "user",
+    "mask",
+    "guard",
+    "parse",
+    "supervisor",
+    "price",
+    "policyAgent",
+    "approval",
+    "response"
+  ],
+  "nodes": [
+    {
+      "id": "user",
+      "lane": "entry",
+      "col": 0,
+      "type": "external",
+      "label": "사용자",
+      "sublabel": "buyer · employee · supplier",
+      "sources": [
+        {
+          "path": "src/api.py",
+          "line": 11,
+          "end_line": 13
+        }
+      ]
+    },
+    {
+      "id": "mask",
+      "lane": "entry",
+      "col": 1,
+      "type": "security",
+      "label": "개인정보 마스킹",
+      "sublabel": "workflow/middleware · LLM 전 · 출구 재검사",
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 240,
+          "end_line": 262
+        },
+        {
+          "path": "src/workflow/middleware.py",
+          "line": 9,
+          "end_line": 25
+        }
+      ]
+    },
+    {
+      "id": "response",
+      "lane": "entry",
+      "col": 5,
+      "type": "frontend",
+      "label": "응답",
+      "sublabel": "answer · contexts · trace",
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 231,
+          "end_line": 238
+        }
+      ]
+    },
+    {
+      "id": "fixed",
+      "lane": "exits",
+      "col": 2,
+      "type": "security",
+      "label": "고정 안내",
+      "sublabel": "G1 차단 · 범위 밖 · 서비스 안내",
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 115,
+          "end_line": 129
+        },
+        {
+          "path": "src/policy/prompts.py",
+          "line": 10,
+          "end_line": 16
+        }
+      ]
+    },
+    {
+      "id": "rag",
+      "lane": "exits",
+      "col": 3,
+      "type": "backend",
+      "label": "규정 RAG 답변",
+      "sublabel": "policy/ · Chroma 조항 검색 + LLM",
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 109,
+          "end_line": 113
+        },
+        {
+          "path": "src/policy/agent.py",
+          "line": 36,
+          "end_line": 44
+        },
+        {
+          "path": "src/policy/retriever.py",
+          "line": 60,
+          "end_line": 63
+        }
+      ]
+    },
+    {
+      "id": "guard",
+      "lane": "flow",
+      "col": 1,
+      "type": "security",
+      "label": "입력 가드",
+      "sublabel": "workflow/intake · 길이 · 지시문",
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 74,
+          "end_line": 78
+        },
+        {
+          "path": "src/workflow/intake.py",
+          "line": 31,
+          "end_line": 33
+        },
+        {
+          "path": "src/workflow/graph.py",
+          "line": 280,
+          "end_line": 287
+        }
+      ]
+    },
+    {
+      "id": "parse",
+      "lane": "flow",
+      "col": 2,
+      "type": "backend",
+      "label": "질문 해석 + 라우팅",
+      "sublabel": "workflow/intake · LLM 구조화 + 규칙",
+      "tag": "G1 권한 게이트",
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 81,
+          "end_line": 106
+        },
+        {
+          "path": "src/workflow/intake.py",
+          "line": 35,
+          "end_line": 51
+        }
+      ]
+    },
+    {
+      "id": "supervisor",
+      "lane": "flow",
+      "col": 3,
+      "type": "backend",
+      "label": "Supervisor",
+      "sublabel": "견적별 작업 배분 (코드)",
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 137,
+          "end_line": 150
+        }
+      ]
+    },
+    {
+      "id": "policyAgent",
+      "lane": "flow",
+      "col": 4,
+      "type": "backend",
+      "label": "규정 검토 에이전트",
+      "sublabel": "policy/ · 권고표 · 근거 조항",
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 170,
+          "end_line": 189
+        },
+        {
+          "path": "src/policy/agent.py",
+          "line": 12,
+          "end_line": 33
+        },
+        {
+          "path": "src/policy/rules.py",
+          "line": 14,
+          "end_line": 30
+        }
+      ]
+    },
+    {
+      "id": "approval",
+      "lane": "flow",
+      "col": 5,
+      "type": "security",
+      "label": "승인 대기 (HITL)",
+      "sublabel": "interrupt · buyer만 재개",
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 192,
+          "end_line": 204
+        },
+        {
+          "path": "src/workflow/graph.py",
+          "line": 267,
+          "end_line": 278
+        }
+      ]
+    },
+    {
+      "id": "vendor",
+      "lane": "vlane",
+      "col": 4,
+      "type": "backend",
+      "label": "업체 검증",
+      "sublabel": "vendor/ · 상태 · 보도 · 서류 → 판정",
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 152,
+          "end_line": 158
+        },
+        {
+          "path": "src/vendor/agent.py",
+          "line": 31,
+          "end_line": 62
+        },
+        {
+          "path": "src/vendor/rules.py",
+          "line": 10,
+          "end_line": 40
+        }
+      ]
+    },
+    {
+      "id": "price",
+      "lane": "plane",
+      "col": 4,
+      "type": "backend",
+      "label": "가격 검증",
+      "sublabel": "price/ · 비교 조건 · VAT/단위 · 중앙값",
+      "sources": [
+        {
+          "path": "src/workflow/graph.py",
+          "line": 161,
+          "end_line": 167
+        },
+        {
+          "path": "src/price/agent.py",
+          "line": 15,
+          "end_line": 59
+        },
+        {
+          "path": "src/price/rules.py",
+          "line": 11,
+          "end_line": 18
+        }
+      ]
+    },
+    {
+      "id": "vendorData",
+      "lane": "vdata",
+      "col": 4,
+      "type": "database",
+      "label": "사내 데이터 · 외부 API",
+      "sublabel": "supplier_data MCP · 국세청 · 뉴스",
+      "sources": [
+        {
+          "path": "src/supplier_data/client.py",
+          "line": 40,
+          "end_line": 55
+        },
+        {
+          "path": "src/vendor/tools.py",
+          "line": 18,
+          "end_line": 52
+        }
+      ]
+    },
+    {
+      "id": "priceData",
+      "lane": "pdata",
+      "col": 4,
+      "type": "database",
+      "label": "조달 단가 추출본",
+      "sublabel": "품목 10종 · 비교 조건 필터",
+      "sources": [
+        {
+          "path": "src/price/tools.py",
+          "line": 28,
+          "end_line": 95
+        },
+        {
+          "path": "src/shared/config.py",
+          "line": 46,
+          "end_line": 59
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-ask",
+      "from": "user",
+      "to": "mask",
+      "label": "질문",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-masked",
+      "from": "mask",
+      "to": "guard",
+      "label": "가린 질문",
+      "variant": "security"
+    },
+    {
+      "id": "e-parse",
+      "from": "guard",
+      "to": "parse",
+      "variant": "default"
+    },
+    {
+      "id": "e-fixed",
+      "from": "parse",
+      "to": "fixed",
+      "label": "차단 · 범위 밖",
+      "variant": "security",
+      "role": "branch"
+    },
+    {
+      "id": "e-rag",
+      "from": "parse",
+      "to": "rag",
+      "label": "규정 질의",
+      "variant": "default",
+      "role": "branch"
+    },
+    {
+      "id": "e-verify",
+      "from": "parse",
+      "to": "supervisor",
+      "label": "견적 검증",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-send-vendor",
+      "from": "supervisor",
+      "to": "vendor",
+      "label": "Send (병렬)",
+      "variant": "default"
+    },
+    {
+      "id": "e-send-price",
+      "from": "supervisor",
+      "to": "price",
+      "label": "Send (병렬)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-vendor-data",
+      "from": "vendor",
+      "to": "vendorData",
+      "label": "조회",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e-price-data",
+      "from": "price",
+      "to": "priceData",
+      "label": "조회",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e-vendor-done",
+      "from": "vendor",
+      "to": "policyAgent",
+      "label": "업체 판정",
+      "variant": "default"
+    },
+    {
+      "id": "e-price-done",
+      "from": "price",
+      "to": "policyAgent",
+      "label": "가격 판정",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-action",
+      "from": "policyAgent",
+      "to": "approval",
+      "label": "조치 있음",
+      "variant": "security"
+    },
+    {
+      "id": "e-answer",
+      "from": "approval",
+      "to": "response",
+      "label": "승인 · 거부",
+      "variant": "emphasis",
+      "role": "return"
+    },
+    {
+      "id": "e-fixed-answer",
+      "from": "fixed",
+      "to": "response",
+      "variant": "default",
+      "role": "return"
+    },
+    {
+      "id": "e-rag-answer",
+      "from": "rag",
+      "to": "response",
+      "variant": "default",
+      "role": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "판정은 코드, LLM은 해석만",
+      "items": [
+        "판정 규칙은 vendor · price · policy의 rules.py (코드)",
+        "LLM은 질문 해석 · 뉴스 분류 · 규정 답변 작성만 (shared/llm.py)"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "승인 대기",
+      "items": [
+        "조치가 없거나 buyer가 아니면 멈추지 않고 응답",
+        "재개 전 구매 담당자 권한을 코드로 확인"
+      ]
+    }
+  ]
+}
