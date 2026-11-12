@@ -69,6 +69,7 @@
 
 - [ ] T19 README 최종화(실행 방법, 결과 요약, 시연 캡처)
   - 확인: 새 폴더에 clone → `.env` 작성 → README 순서대로 실행 성공
+  - 진행(2026-11-12): README 초안 · `docs/DEMO.md` 시연 체크리스트 완료. clone 검증 통과(새 venv 설치 → pytest 72건 → 서버 · 화면 · 승인 흐름 → run_eval 20/20 재현). 검증 중 README 보완: venv 생성 단계, Windows 한글 curl 인코딩 오류 안내 + PowerShell 예시, 승인 요청에 `question` 필요. **남은 것: 시연 캡처 5장, Judge 점수 반영**
 - [ ] T20 GitHub 공개 저장소 push, Google Form 제출 (2026-11-13 15:00 마감)
   - 확인: 로그인하지 않은 브라우저에서 저장소가 열림
 

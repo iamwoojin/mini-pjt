@@ -99,11 +99,33 @@ web/        index.html(테스트 화면)
 ## 실행
 
 ```bash
-pip install -r requirements.txt          # 서비스 실행 + 단위 테스트 (Python 3.12+)
+python -m venv .venv                     # Python 3.12+ (3.14에서 확인)
+source .venv/bin/activate                # Windows: .venv\Scripts\activate
+pip install -r requirements.txt          # 서비스 실행 + 단위 테스트
 cp .env.example .env                     # AWS 키 입력 (국세청 LIVE 조회 시 DATA_GO_KR_API_KEY)
-uvicorn src.api:app --port 8000          # http://localhost:8000 테스트 화면
+pytest                                   # 단위 테스트 72건 (LLM 호출 없음, 수 초)
+python -m uvicorn src.api:app --port 8000   # http://localhost:8000 테스트 화면
+```
+
+- 첫 질문 때 규정 문서 인덱스(`chroma_db/`)를 자동으로 만든다 (임베딩 호출 때문에 몇 초 더 걸림).
+- 테스트 화면에서 역할 버튼(구매 담당자 · 임직원 · 공급사)을 고르고 견적을 넣어 [검증하기]를 누른다. 장면별 예시: [docs/DEMO.md](docs/DEMO.md)
+
+명령줄에서 호출할 때 (macOS · Linux):
+
+```bash
 curl -X POST localhost:8000/query -H "Content-Type: application/json" \
      -d '{"question": "베타산업(999-99-00002) 견적: 작업용의자 595×600×895mm 1개 290,000원(VAT 별도). 진행해도 될까?"}'
+# 승인 대기 응답의 thread_id로 승인 (question은 빈 문자열이라도 필요)
+curl -X POST localhost:8000/query -H "Content-Type: application/json" \
+     -d '{"question": "", "thread_id": "<응답의 thread_id>", "approval": "approve", "role": "buyer"}'
+```
+
+Windows의 Git Bash · cmd에서는 명령줄의 한글이 UTF-8로 전송되지 않아 `There was an error parsing the body`가 날 수 있다. 질문을 UTF-8 JSON 파일로 저장해 `--data-binary @q.json`으로 보내거나, PowerShell에서 다음처럼 호출한다.
+
+```powershell
+$body = @{ question = "베타산업(999-99-00002) 견적: 작업용의자 595×600×895mm 1개 290,000원(VAT 별도). 진행해도 될까?" } | ConvertTo-Json
+Invoke-RestMethod -Uri http://localhost:8000/query -Method Post -ContentType "application/json; charset=utf-8" `
+    -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
 ```
 
 ### API
@@ -115,7 +137,7 @@ curl -X POST localhost:8000/query -H "Content-Type: application/json" \
 | `question` | O | 견적 내용 또는 규정 질문 (최대 2,000자) |
 | `role` | | `buyer`(기본, 구매 담당자) · `employee`(임직원, 조치는 안내만) · `supplier`(공급사, 자사 견적만) |
 | `supplier_id` | supplier일 때 | 공급사 ID (예: `S03`) |
-| `thread_id` · `approval` | 승인 시 | 승인 대기 응답의 `thread_id`와 `"approve"` 또는 `"reject"` |
+| `thread_id` · `approval` | 승인 시 | 승인 대기 응답의 `thread_id`와 `"approve"` 또는 `"reject"` (`question`은 빈 문자열로 보냄) |
 
 응답: `{"answer", "contexts": [{"doc_id", "text"}], "trace": [{"step", "input", "output"}]}`. 조치 승인 대기 시 `status: "pending_approval"`, `thread_id`, `action`이 추가된다. 승인은 `role: buyer`만 가능하다.
 
@@ -123,7 +145,6 @@ curl -X POST localhost:8000/query -H "Content-Type: application/json" \
 
 ```bash
 pip install -r requirements-eval.txt                      # RAGAS 평가용 (선택)
-pytest                                                    # 단위 테스트 72건 (수 초)
 python evaluation/run_eval.py --tag <태그>                # 테스트 세트 20건 자동 채점 (fixture 모드)
 python evaluation/run_ragas.py --tag ragas_<태그>         # RAGAS faithfulness · context_recall
 python evaluation/run_judge.py --from ragas_<태그> --tag judge_<태그>   # LLM-as-Judge
