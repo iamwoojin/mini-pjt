@@ -62,6 +62,8 @@
   - 진행(2026-11-12): 수정 · pytest 59건 · round7 20/20 · RAGAS 0.972/1.000 완료. Judge 재측정 완료: 4.92 → **5.00** (Sonnet 4.5, us-east-1 한도로 us-west-2에서 실행, `judge_round7.json`)
 - [x] T22 개인정보 마스킹: 질문·답변·trace의 전화번호·이메일·주민번호 형태를 가림
   - 확인: 단위 테스트 추가, 마스킹 질문 1건이 응답과 trace 모두에서 가려짐, `--tag round8` 통과율 유지 (결과: 입구(LLM 전)·출구 마스킹, 사업자번호 예외, pytest 72건, round8 20/20 · 답변 round7과 동일, 종단 확인 원본 0건)
+- [x] T25 코드 폴더를 도메인별로 재구성 (`src/workflow · vendor · price · policy · supplier_data · shared`)
+  - 확인: 판정 로직은 위치만 옮김, `src/agent.py` · `tools.py` · `retriever.py` · `api.py`는 산출물 구조(4-1) 진입 파일로 유지, CLAUDE.md에 폴더 역할 · 배치 규칙 정의 → `pytest` 72건 → `run_eval.py --tag round9` 20/20, 답변 · trace 단계가 round8과 같음 → 다른 폴더에서 실행해도 MCP 연결 → 서버 승인 흐름 (결과: 모두 통과, 2026-11-12)
 - [ ] T23 (시간 남으면) 장기 메모리(SQLite): 공급사별 검증 이력 저장 · 조회 (판정은 바꾸지 않고 참고 근거로만 표시, supplier는 자사 이력만)
   - 확인: 같은 공급사를 두 번 검증하면 두 번째 답변에 이전 이력이 표시됨, 평가 전 리셋, 새 태그로 통과율 유지
 

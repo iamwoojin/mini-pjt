@@ -16,14 +16,14 @@
 
 ## 결과 요약
 
-| 지표 | 1차 (round1) | 최종 (round8) | 목표 |
+| 지표 | 1차 (round1) | 최종 (round9) | 목표 |
 |---|---|---|---|
 | 테스트 세트 통과율 (20건) | 17/20 (85%) | **20/20 (100%)** | 85% 이상 |
 | guardrail | 3/3 (100%) | **3/3 (100%)** | 100% |
 | 도구 정확도 | 95.5% | 97.7% | 90% 이상 |
 | RAGAS faithfulness / context_recall | - | **0.972 / 1.000** (round7) | 0.8 이상 |
 | LLM-as-Judge (5점) | - | **5.00** (round7, 근거 5.0 · 완결성 5.0) | 4 이상 |
-| 응답 시간 중앙값 | 2.9초 | 2.8초 | 20초 이내 |
+| 응답 시간 중앙값 | 2.9초 | 2.7초 | 20초 이내 |
 | 단위 테스트 (pytest) | - | **72건 통과** | - |
 
 ### 개선 이력
@@ -37,6 +37,7 @@
 | round6 | **강사 피드백 반영 — 가격 비교 조건 고정**: 품목 10종의 세부품명·규격·기준 단위·포장 구성을 고정하고 조건을 만족한 표본만 중앙값에 사용, 제외 사유 기록 | 단위가 섞인 표본 제외 (예: 라벨용지 '롤' 1건) |
 | round7 | LLM-as-Judge 감점 2건 보완: 규정 답변에 구간별 절차, 범위 밖 안내에 조항 인용 | Judge 4.92 → 5.00 |
 | round8 | 개인정보 마스킹 미들웨어: LLM 호출 전 주민번호·전화번호·이메일 마스킹 (사업자번호는 유지) | 응답·trace 원본 0건 |
+| round9 | 코드 폴더를 도메인별(workflow · vendor · price · policy · supplier_data · shared)로 재구성, 판정 로직 변경 없음 | 답변 · trace round8과 동일 (구조 개선) |
 
 ## 시연
 
@@ -66,7 +67,7 @@ POST /query ─ 개인정보 마스킹 ─ 입력 가드레일 ─ 질문 해석
 ```
 
 - **판정은 LLM이 아니라 코드**가 한다(업체 판정 · 가격 판정 · 권고 · 가격 환산). LLM은 질문 해석, 뉴스 분류, 규정 답변 작성에만 쓴다.
-- 판정 기준 숫자는 [src/config.py](src/config.py)와 [data/docs/](data/docs/) 규정 문서가 같다.
+- 판정 기준 숫자는 [src/shared/config.py](src/shared/config.py)와 [data/docs/](data/docs/) 규정 문서가 같다.
 
 ### 사용한 패턴
 
@@ -75,7 +76,7 @@ POST /query ─ 개인정보 마스킹 ─ 입력 가드레일 ─ 질문 해석
 | LCEL + Pydantic 구조화 출력 | 질문 해석 `ParsedQuery` (공급사 · 품목 · 규격 · 견적가 · 단위 · VAT) |
 | RAG | 규정 5개 문서를 조항 단위로 Chroma에 저장, `doc_id = 파일#조항`, 판정별 근거 조항은 코드로 고정 |
 | 도구 다중 사용 | `check_business_status` · `search_news` · `get_supplier_docs` · `get_quotes` · `search_procurement_prices` · `normalize_price` · `search_policy` |
-| MCP | 공급사 · 견적 · 제출 서류를 사내 데이터 MCP 서버(`src/mcp_server.py`)로 제공, 실패 시 직접 호출로 전환 |
+| MCP | 공급사 · 견적 · 제출 서류를 사내 데이터 MCP 서버(`src/supplier_data/mcp_server.py`)로 제공, 실패 시 직접 호출로 전환 |
 | 가드레일 | G1 타사 정보 차단 · G2 조치 자동 실행 금지 · G3 견적서 속 지시문 무시 · G4 근거 부족 시 판정 보류 · G5 범위 밖 안내 · 개인정보 마스킹 |
 | HITL | LangGraph `interrupt` + 체크포인터, 재개 전 구매 담당자 권한 확인 |
 | 미들웨어 | 개인정보 마스킹, 규격 매칭 실패 시 재검색, 모델 자동 대체(Haiku 4.5 → Sonnet 4.5) |
@@ -86,9 +87,14 @@ POST /query ─ 개인정보 마스킹 ─ 입력 가드레일 ─ 질문 해석
 ## 구조
 
 ```
-src/        graph.py(LangGraph: 마스킹 · 라우팅 · Supervisor · 하위 에이전트 병렬 · 승인 대기 interrupt)
-            agent.py(판정 규칙 · 하위 에이전트 작업 · 프롬프트 · 근거 조항) · tools.py(도구) · config.py(판정 기준 · 비교 조건)
-            data.py · mcp_server.py · mcp_client.py(사내 데이터 MCP) · retriever.py(규정 RAG) · api.py(POST /query)
+src/        api.py(POST /query) · agent.py · tools.py · retriever.py(진입 파일: 도메인 폴더의 이름을 모아 둠)
+  workflow/       graph.py(LangGraph: 라우팅 · Supervisor · 하위 에이전트 병렬 · 승인 대기 interrupt)
+                  intake.py(입력 가드 · 질문 해석 · 라우팅 규칙) · middleware.py(개인정보 마스킹) · prompts.py · schemas.py
+  vendor/         업체 검증: tools.py(국세청 · 뉴스) · rules.py(업체 판정) · agent.py · prompts.py(뉴스 분류) · schemas.py
+  price/          가격 검증: tools.py(조달 단가 · 비교 조건 · 환산) · rules.py(가격 판정) · agent.py
+  policy/         규정 검토: retriever.py(규정 RAG) · citations.py(판정→근거 조항) · rules.py(권고표) · agent.py · prompts.py
+  supplier_data/  사내 데이터: store.py · mcp_server.py · mcp_client.py · client.py(MCP 경유, 실패 시 직접 호출)
+  shared/         config.py(판정 기준 · 비교 조건) · llm.py(Bedrock 클라이언트 · 대체 모델) · schemas.py · text.py · fixtures.py
 data/       suppliers.json(가상 공급사) · docs/(사내 규정 더미 5개) · fixtures/(조달 단가 추출본, 국세청·뉴스 fixture)
 scripts/    extract_procurement.py(조달청 원본 CSV → 테스트 품목 추출)
 evaluation/ test_queries.csv · run_eval.py · run_ragas.py · run_judge.py · ragas_references.json · results/ · 보고서
@@ -175,5 +181,5 @@ python evaluation/run_judge.py --from ragas_<태그> --tag judge_<태그>   # LL
 | `DATA_GO_KR_API_KEY` | `API_MODE=LIVE`로 국세청 실시간 조회를 할 때만. 평가(fixture 모드)에는 필요 없음 |
 | (없음) | `pytest` 단위 테스트 72건은 LLM을 호출하지 않아 키 없이 실행됨 |
 
-- `.env`는 `.gitignore`로 제외되어 커밋되지 않는다. 개발 중에는 저장소 밖 상위 폴더의 `.env`를 읽는다 (`src/config.py`).
+- `.env`는 `.gitignore`로 제외되어 커밋되지 않는다. 개발 중에는 저장소 밖 상위 폴더의 `.env`를 읽는다 (`src/shared/config.py`).
 - 실행 결과는 키 없이도 `evaluation/results/`의 평가 결과 파일과 보고서로 확인할 수 있다.
