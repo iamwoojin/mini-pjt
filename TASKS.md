@@ -73,7 +73,8 @@
   - 확인: 새 폴더에 clone → `.env` 작성 → README 순서대로 실행 성공
   - 진행(2026-11-12): README 초안 · `docs/DEMO.md` 시연 체크리스트 완료. clone 검증 통과(새 venv 설치 → pytest 72건 → 서버 · 화면 · 승인 흐름 → run_eval 20/20 재현). 검증 중 README 보완: venv 생성 단계, Windows 한글 curl 인코딩 오류 안내 + PowerShell 예시, 승인 요청에 `question` 필요. Judge 점수 README 반영 완료
   - 진행(2026-11-13): 시연 캡처 7장(`docs/screenshots/`, 필수 5장 + 승인 후 · 임직원 권한) 추가, README 시연 표 · DEMO.md 입력을 실제 캡처에 맞춤(③ 감마유통 휴업, ②-1 임직원 + 단위 착시)
-- [ ] T20 GitHub 공개 저장소 push, Google Form 제출 (2026-11-13 15:00 마감)
+- [x] T20 GitHub 공개 저장소 push, Google Form 제출 (2026-11-13 15:00 마감)
+  - 완료(2026-11-13 오전): 공개 전 점검(키 · 실명 · 회사 맥락 · 개인정보 · 로컬 경로, 현재 파일 + 전체 이력) 통과 → 공개 전환, 로그인 없이 접근 확인 → ZIP(커밋 15a30bc, 공개 저장소와 바이트 단위 동일, 키 없이 pytest 72건 통과) → Google Form 제출
   - 확인: 로그인하지 않은 브라우저에서 저장소가 열림
   - 키는 올리지 않는다: 공개 전 `git log -p` 전체에서 AWS · 국세청 · LangSmith 키 패턴이 없는지 다시 검사, `.env`가 추적되지 않는지 확인, 시연 캡처에 `.env` · 키가 찍힌 화면이 없는지 확인. 강사가 실행에 키가 필요하면 저장소가 아닌 별도 경로로 전달하고 과정 종료 후 폐기. 실수로 올라가면 이력 삭제가 아니라 **키 폐기 · 재발급**이 우선
   - 제출물: Git URL + ZIP. ZIP은 최종 커밋 후 `git archive --format=zip -o ../mini-pjt.zip HEAD`로 만든다(커밋된 파일만, 약 180KB). 폴더 통째 압축 금지(`CLAUDE.local.md`, `data/raw/` 193MB, `.git` 포함됨)
