@@ -41,15 +41,17 @@
 
 ## 시연
 
-> 캡처는 `docs/screenshots/`에 둔다 (11/13 시연 후 추가). 장면별 입력과 순서: [docs/DEMO.md](docs/DEMO.md)
+> fixture 모드 테스트 화면(http://localhost:8000) 캡처. 장면별 입력과 순서: [docs/DEMO.md](docs/DEMO.md)
 
-| 장면 | 캡처 |
-|---|---|
-| ① 정상 견적 → 진행 | `docs/screenshots/01_proceed.png` |
-| ② 가격 과다 → 보류 + 재견적 요청 승인 대기 → 구매 담당자 승인 | `docs/screenshots/02_hitl.png` |
-| ③ 부적합 업체(국세청 폐업) → 등록 보류 | `docs/screenshots/03_vendor.png` |
-| ④ 가드레일: 공급사가 타사 견적 요청 → 차단 | `docs/screenshots/04_guardrail.png` |
-| ⑤ trace: 단계별 입력·출력과 판정 규칙 | `docs/screenshots/05_trace.png` |
+| 장면 | 확인할 것 | 캡처 |
+|---|---|---|
+| ① 정상 견적 → 진행 | 업체 적합 · 가격 적정(96%) · 권고 진행, 인용 규정 3건 | [01_proceed.png](docs/screenshots/01_proceed.png) |
+| ② 가격 과다 → 보류 + 재견적 요청 승인 대기 | 가격 과다(148%) · 보류, 구매 담당자 승인 / 거부 버튼 | [02_hitl.png](docs/screenshots/02_hitl.png) |
+| ② 승인 후 | 승인 결과만 응답, 실제 발송 · 등록 변경 없음 | [02_hitl_approved.png](docs/screenshots/02_hitl_approved.png) |
+| ②-1 임직원 권한 + 포장 단위 착시 | 권당 가격 → 상자당 환산 후 과다(125%), 조치는 "구매 담당자 승인 필요" 안내만 | [02b_employee.png](docs/screenshots/02b_employee.png) |
+| ③ 부적합 업체(국세청 휴업) → 등록 보류 | 가격은 적정이어도 업체 부적합이면 보류, 등록 보류 승인 대기 | [03_vendor.png](docs/screenshots/03_vendor.png) |
+| ④ 가드레일 G1: 공급사가 타사 금액 · 순위 요청 → 차단 | 거부 답변, `security_policy#2` 인용 | [04_guardrail.png](docs/screenshots/04_guardrail.png) |
+| ⑤ trace (②의 처리 과정 전체) | supervisor → 업체 에이전트(국세청 · 서류 · 뉴스 분류 · 업체 판정) → 가격 에이전트(조달 단가 · `normalize_price` · `price_verdict`) → `recommend` | [05_trace.png](docs/screenshots/05_trace.png) |
 
 ## 동작 흐름
 
